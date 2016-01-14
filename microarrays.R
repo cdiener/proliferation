@@ -37,21 +37,15 @@ stats <- function(x, i, alpha, lambda, y) {
 #' @return A new ExpressionSet with features given by \code{unique(groups)}.
 eset_reduce <- function(eset, features, groups, fun, progress=TRUE) {
     i <- 0
-    n <- length(unique(groups))
+    groups <- factor(groups)
     ex <- exprs(eset)
-    env <- environment()
     
-    summ <- function(ids) {
-        if (progress) {
-            cat("                                                           \r")
-            cat(sprintf("Joining group %d/%d...", env$i <- env$i + 1, n))
-        }
-        fun(ex[ids,,drop=F])
-    }
-    
-    res <- tapply(features, groups, summ, simplify=FALSE)
-    res <- do.call(rbind, res)
-    cat("\n")
+    idx <- 1:nrow(ex)
+    names(idx) <- rownames(ex)
+    idx <- idx[features]
+    facs <- as.integer(groups)
+    res <- matrix_reduce(ex, idx, facs)
+    rownames(res) <- levels(groups)
     
     return(ExpressionSet(res))
 }
@@ -59,22 +53,24 @@ eset_reduce <- function(eset, features, groups, fun, progress=TRUE) {
 ### RUN ###
 
 cat("Loading ExpressionSet and assigning annotations...\n")
-if (file.exists("eset.Rd")) load("eset.Rd") else {
+if (file.exists("eset_raw.Rd")) load("eset_raw.Rd") else {
     celfiles <- list.celfiles(recursive=T, listGzipped=T)
     raw_data <- read.celfiles(celfiles)
-    rm(raw_data)
     eset <- rma(raw_data, target="probeset")
-    genemap <- fread("huex_to_enstxp.csv", colClasses=rep("character", 3))
-    setkey(genemap, huex)
-    
-    eset <- eset[rownames(eset) %in% genemap$huex, ]
-    genemap <- genemap[huex %in% rownames(eset)]
-
-    cat("Reducing ExpressionSet...\n")
-    # Summarize by transcript
-    eset <- eset_reduce(eset, genemap$huex, genemap$enstxp, colMeans)
-    save(eset, file="eset.Rd")
+    rm(raw_data)
+    save(eset, "eset_raw.Rd")
 }
+
+genemap <- fread("huex_to_enstxp.csv", colClasses=rep("character", 3))
+setkey(genemap, huex)
+
+eset <- eset[rownames(eset) %in% genemap$huex, ]
+genemap <- genemap[huex %in% rownames(eset)]
+Rcpp::sourceCpp("matrix_reduce.cpp")
+cat("Reducing ExpressionSet...\n")
+# Summarize by transcript
+eset <- eset_reduce(eset, genemap$huex, genemap$enstxp, colMeans)
+save(eset, file="eset.Rd")
 
 samples <- fread("samples.csv")
 
