@@ -36,7 +36,6 @@ stats <- function(x, i, alpha, lambda, y) {
 #' @param progress Should progress information be shown.
 #' @return A new ExpressionSet with features given by \code{unique(groups)}.
 eset_reduce <- function(eset, features, groups, fun, progress=TRUE) {
-    i <- 0
     groups <- factor(groups)
     ex <- exprs(eset)
     
@@ -44,7 +43,7 @@ eset_reduce <- function(eset, features, groups, fun, progress=TRUE) {
     names(idx) <- rownames(ex)
     idx <- idx[features]
     facs <- as.integer(groups)
-    res <- matrix_reduce(ex, idx, facs)
+    res <- matrix_reduce(ex, idx, facs, "mean")
     rownames(res) <- levels(groups)
     
     return(ExpressionSet(res))
@@ -61,21 +60,20 @@ if (file.exists("eset_raw.Rd")) load("eset_raw.Rd") else {
     save(eset, "eset_raw.Rd")
 }
 
-genemap <- fread("huex_to_enstxp.csv", colClasses=rep("character", 3))
+genemap <- fread("genemap.csv", colClasses=rep("character", 7))
 setkey(genemap, huex)
 
 eset <- eset[rownames(eset) %in% genemap$huex, ]
-genemap <- genemap[huex %in% rownames(eset)]
+genemap <- genemap[huex %in% rownames(eset) & entrez != ""]
 Rcpp::sourceCpp("matrix_reduce.cpp")
 cat("Reducing ExpressionSet...\n")
 # Summarize by transcript
-eset <- eset_reduce(eset, genemap$huex, genemap$enstxp, colMeans)
+eset <- eset_reduce(eset, genemap$huex, genemap$entrez, colMeans)
 save(eset, file="eset.Rd")
 
 samples <- fread("samples.csv")
 
 cat("Preparing data for growth rate inference...\n")
-# Correlate growth rates to transcripts
 gcs <- fread("growth_rates.csv")
 setkey(gcs, cell_line)
 cell_lines <- intersect(gcs$cell_line, samples$cell_line)
@@ -87,34 +85,10 @@ if (!all(colnames(eset_summ) == names(rates))) cat("Wrong cell line ordering!")
 
 # cors <- apply(eset_summ, 1, cor, y=rates)
 
-# Do elastic net regression
-cat("Getting elastic net GLM...\n")
-library(glmnet)
-
-# Grid search for good alpha strategy
-al <- seq(0.1,1,by=0.05)
-mods <- lapply(al, function(a) cv.glmnet(t(eset_summ), log(rates), alpha=a, 
-    parallel=TRUE, nfolds=10))
-res <- lapply(mods, function(m) m$cvm)
-x <- NULL
-for (i in 1:length(al)) {
-    x <- rbind(x, data.frame(mse=res[[i]], alpha=al[i]))
-}
-
-alpha_plot <- ggplot(x, aes(x=alpha, y=mse)) + geom_jitter() + stat_smooth()
-best <- which.min(sapply(res, min))
-cat(paste0("Found best model at alpha=", al[best], "\n"))
-mod <- mods[[best]]
-
-pdf("alpha_steps.pdf", width=8, height=6)
-plot(mod)
-dev.off()
-
-pred <- predict(mod, t(eset_summ), s=1e-2)
-
-df <- data.frame(predicted=exp(pred[,1]), measured=rates, panel=gcs[cell_lines, panel_name])
-fit_plot <- ggplot(df, aes(x=predicted, y=measured)) + 
-    geom_point(aes(col=panel)) + geom_abline()
+eset_summ <- data.table(t(eset_summ))
+eset_summ[, "rates" := rates]
+readr::write_csv(eset_summ, "regprob.csv")
+#source("regression.R")
 
 
 
