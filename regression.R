@@ -37,7 +37,7 @@ r <- benchmark(learner = lrn, task = task, resampling = resa,
 train_full <- parallelMap(train_perf, lrn, more.args=list(task=task))
 
 cat("Getting feature importance\n")
-rfimp <- rfsrc(rates ~ ., data=rdata, ntree=5000)$importance
+rfimp <- rfsrc(rates ~ ., data=rdata, ntree=1000)$importance
 cutoff <- quantile(rfimp[rfimp > sqrt(.Machine$double.eps)], .99)
 imp <- names(rdata)[rfimp > cutoff]
 cat(sprintf("- kept %d variables\n", length(imp)))

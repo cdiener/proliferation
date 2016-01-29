@@ -85,9 +85,9 @@ if (!all(colnames(eset_summ) == names(rates))) cat("Wrong cell line ordering!")
 
 # cors <- apply(eset_summ, 1, cor, y=rates)
 
-eset_summ <- data.table(t(eset_summ))
-eset_summ[, "rates" := rates]
-readr::write_csv(eset_summ, "regprob.csv")
+export <- data.table(t(eset_summ))
+export[, "rates" := rates]
+readr::write_csv(export, "regprob.csv")
 #source("regression.R")
 
 
