@@ -12,17 +12,6 @@ library(stringr)
 library(data.table)
 library(ggplot2)
 
-# For bootstrapping or CV
-stats <- function(x, i, alpha, lambda, y) {
-    fit <- glmnet(x[i,], y[i], alpha=alpha)
-    ip <- if (length(y[-i])>0) -i else i
-    pred <- predict(fit, x[ip,], s=lambda)[,1]
-    mse <- mean((y[ip] - pred)^2)
-    rel_error <- mean(abs(y[ip] - pred)/abs(0.5*(y[ip]+pred)))
-    co <- cor(y[ip], pred)
-    return(c(mse=mse, rel_error=rel_error, cor=co))
-}
-
 #' Reduces an ExpressionSet by an n-to-n map of features to groups. All entries
 #' in \code{features} must exist in \code{eset}. \code{features} and 
 #' \code{groups} must have the same length.
