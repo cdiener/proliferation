@@ -49,15 +49,17 @@ if (file.exists("eset_raw.Rd")) load("eset_raw.Rd") else {
     save(eset, "eset_raw.Rd")
 }
 
-genemap <- fread("genemap.csv", colClasses=rep("character", 7))
+genemap <- fread("genemap.csv", colClasses=rep("character", 7), 
+    na.strings=c("NA",""))
+genemap <- unique(genemap, by=c("huex", "entrez"))
 setkey(genemap, huex)
 
 eset <- eset[rownames(eset) %in% genemap$huex, ]
-genemap <- genemap[huex %in% rownames(eset) & entrez != ""]
+genemap <- genemap[huex %in% rownames(eset) & !is.na(entrez)]
 Rcpp::sourceCpp("matrix_reduce.cpp")
 cat("Reducing ExpressionSet...\n")
-# Summarize by transcript
-eset <- eset_reduce(eset, genemap$huex, genemap$entrez, colMeans)
+# Summarize by Ensembl Gene
+eset <- eset_reduce(eset, genemap$huex, genemap$entrez)
 save(eset, file="eset.Rd")
 
 samples <- fread("samples.csv")
@@ -73,6 +75,12 @@ names(rates) <- cell_lines
 if (!all(colnames(eset_summ) == names(rates))) cat("Wrong cell line ordering!")
 
 # cors <- apply(eset_summ, 1, cor, y=rates)
+
+# use only features that have shared Ensembl Gene IDs in NCI60 and TCGA
+devtools::load_all("~/code/tcgar")
+data(huex_features)
+data(rnaseqv2_features)
+#shared <- intersect(rownames(eset_summ), rnaseqv2_features$entrez)
 
 export <- data.table(t(eset_summ))
 export[, "rates" := rates]

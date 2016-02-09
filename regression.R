@@ -42,6 +42,8 @@ train_full <- parallelMap(train_perf, lrn, more.args=list(task=task))
 
 cat("Getting feature importance\n")
 rfimp <- rfsrc(rates ~ ., data=rdata, ntree=1000, importance="permute.ensemble")$importance
+readr::write_csv(data.frame(entrez=sub("hsa_", "", names(rfimp)), 
+    importance=rfimp), "rfimportance.csv")
 cutoff <- quantile(rfimp[rfimp > sqrt(.Machine$double.eps)], .99)
 imp <- names(rdata)[rfimp > cutoff]
 cat(sprintf("- kept %d variables\n", length(imp)))
@@ -51,8 +53,8 @@ redtask <- subsetTask(task, features=imp)
 
 redlrn <- list(makeLearner("regr.glmnet", par.vals=list(alpha=0.5)), 
     makeLearner("regr.randomForestSRC", par.vals=list(ntree=1000, mtry=length(imp))), 
-    makeLearner("regr.xgboost", par.vals=list(max_depth=2, eta=1e-2, 
-    nrounds=1e2, verbose=0)),
+    makeLearner("regr.xgboost", par.vals=list(max_depth=2, eta=1e-3, 
+    nrounds=1e5, verbose=0)),
     makeLearner("regr.h2odeep", par.vals=list(hidden=c(100, 100, 100), 
     l1=0.01, epochs=10)))
 redsa <- makeResampleDesc(method = "LOO")
@@ -76,9 +78,6 @@ cv_plot <- ggplot(measures, aes(x=method, y=value, col=method)) + geom_boxplot()
     geom_jitter() + facet_wrap(~variable, scales="free") + theme_bw()
     
 preds_test <- combine_measures(r_red$results$nci60, extract=c("pred", "data"))
-preds_test <- rbindlist(preds_test)
-preds_test$i <- method[preds_test$i]
-names(preds_test)[4] <- "method"
 test_plot <- ggplot(preds_test, aes(x=truth, y=response, col=method)) + geom_abline() + 
     geom_point() + facet_wrap(~method, nrow=1) + theme_bw()
 
