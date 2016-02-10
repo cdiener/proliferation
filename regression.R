@@ -16,7 +16,7 @@ start_t <- proc.time()
 
 cat("Reading data\n")
 rdata <- fread("regprob.csv", header=T)
-names(rdata)[-ncol(rdata)] <- paste0("hsa_", names(rdata)[-ncol(rdata)])
+#names(rdata)[-ncol(rdata)] <- paste0("hsa_", names(rdata)[-ncol(rdata)])
 
 cat("Running full regressors\n")
 task <- makeRegrTask(id = "nci60", data=as.data.frame(rdata), target="rates")
@@ -53,8 +53,8 @@ redtask <- subsetTask(task, features=imp)
 
 redlrn <- list(makeLearner("regr.glmnet", par.vals=list(alpha=0.5)), 
     makeLearner("regr.randomForestSRC", par.vals=list(ntree=1000, mtry=length(imp))), 
-    makeLearner("regr.xgboost", par.vals=list(max_depth=2, eta=1e-3, 
-    nrounds=1e5, verbose=0)),
+    makeLearner("regr.xgboost", par.vals=list(max_depth=2, eta=1e-2, 
+    nrounds=1e3, verbose=0)),
     makeLearner("regr.h2odeep", par.vals=list(hidden=c(100, 100, 100), 
     l1=0.01, epochs=10)))
 redsa <- makeResampleDesc(method = "LOO")
