@@ -8,11 +8,16 @@ devtools::load_all("~/code/tcgar")
 library(data.table)
 library(ggplot2)
 
+cat("Reading TCGA data..\n")
+
 folders <- dir("TCGA", pattern="[A-Z]{2,4}$", include.dirs=T)
 folders <- file.path("TCGA", folders)
 
-tcga <- read_bulk(folders)
-gc()
+if (!file.exists("tcga.rda")) {
+    tcga <- read_bulk(folders)
+    gc()
+    save(tcga, file="tcga.rda")
+} else load("tcga.rda")
 
 all_rnaseq <- rowMeans(log(tcga$RNASeqV2$counts+1))
 all_huex <- rowMeans(tcga$HuEx$assay)
@@ -21,25 +26,31 @@ nci60 <- fread("regprob.csv", header=T)
 rates <- nci60$rates
 nci60[, rates := NULL]
 all_nci60 <- colMeans(nci60)
-imp <- fread("rfimportance.csv")
-imp <- imp[importance > sqrt(.Machine$double.eps)]
-imp <- imp[importance > quantile(importance, .99)]
-imp <- sub("hsa_", "", imp$entrez)
+ints <- fread("best_interactions.csv", header=T)
+genes <- unique(c(ints$gene1, ints$gene2))
 
 cat("Comparing HuEx\n")
-data(huex_bm)
-setkey(huex_bm, entrez)
-shared <- intersect(names(all_nci60), huex_bm$entrez)
-huex <- data.frame(NCI60=all_nci60[huex_bm[shared, entrez]], TCGA=all_huex[huex_bm[shared, symbol]])
-#huex_imp <- data.frame(NCI60=all_nci60[imp$entrez], TCGA=all_huex[huex_features[imp$entrez, symbol]])
+hdf <- data.table(huex_bm)
+setkey(hdt, ensgene)
+map <- hdt[shared, list(ensgene, symbol)]
+shared <- intersect(names(all_nci60), hdt$ensgene)
+huex <- data.frame(NCI60=all_nci60[map$ensgene], TCGA=all_huex[map$symbol])
+save(huex, file="huex_calib.rda")
+map <- hdt[genes, list(ensgene, symbol)]
+huex_imp <- data.frame(NCI60=all_nci60[map$ensgene], TCGA=all_huex[map$symbol], map)
 
 huex_plot <- ggplot(huex, aes(x=TCGA, y=NCI60)) + geom_point(alpha=0.25) + 
-    geom_abline() #+ geom_point(data=huex_imp, col="red")
+    geom_abline() + geom_point(data=huex_imp, col="red")
 
-cat("Comparing HuEx")
-shared <- intersect(names(all_nci60), names(all_rnaseq))
-rna <- data.frame(NCI60=all_nci60[shared], TCGA=all_rnaseq[shared])
-#rna_imp <- data.frame(NCI60=all_nci60[imp$entrez], TCGA=all_rnaseq[imp$entrez])
+cat("Comparing RNASeq\n")
+rdt <- data.table(rnaseq_bm)
+setkey(rdt, ensgene)
+shared <- intersect(names(all_nci60), rdt$ensgene)
+map <- rdt[shared, list(ensgene, entrez)]
+rna <- data.frame(NCI60=all_nci60[map$ensgene], TCGA=all_rnaseq[map$entrez], map)
+save(rna, file="rna_calib.rda")
+map <- rdt[genes, list(ensgene, entrez)]
+rna_imp <- data.frame(NCI60=all_nci60[map$ensgene], TCGA=all_rnaseq[map$entrez])
 
 rna_plot <- ggplot(rna, aes(x=TCGA, y=NCI60)) + geom_point(alpha=0.25) + 
-    geom_abline()
+    geom_abline()+ geom_point(data=rna_imp, col="red")

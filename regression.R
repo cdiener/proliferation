@@ -5,84 +5,104 @@
 #  MIT license. See LICENSE for more information.
 
 library(data.table)
-library(mlr)
-library(randomForestSRC)
-library(parallelMap)
-library(h2o)
+library(doParallel)
+library(foreach)
+library(glmnet)
+library(ggplot2)
 
-source("mlr_ext.R")
+measures = function(truth, pred) {
+    res <- truth - pred
+    mse <- mean(res^2)
+    rmse <- sqrt(mse)
+    mae <- mean(abs(res))
+    mre <- mean(abs(res)/abs(truth))
+    rsq <- 1 - sum(res^2)/sum((truth - mean(truth))^2)
+    
+    c(mse=mse, rmse=rmse, mae=mae, mre=mre, rsq=rsq)
+}
+
+inter = function(M) {
+    nam <- colnames(M)
+    out <- NULL
+    for(i in 1:ncol(M)) {
+        newnames <- paste0(nam[i], "x", colnames(M[, i:ncol(M), drop=F]))
+        x <- M[, i]*M[, i:ncol(M), drop=F]
+        colnames(x) <- newnames
+        out <- cbind(out, x)
+    }
+    
+    return(out)
+}
 
 start_t <- proc.time()
+registerDoParallel(cl=6)
 
 cat("Reading data\n")
 rdata <- fread("regprob.csv", header=T)
+load("rna_calib.rda")
+good <- rna$ensgene[(rna$TCGA - rna$NCI60)^2 < 4]
 #names(rdata)[-ncol(rdata)] <- paste0("hsa_", names(rdata)[-ncol(rdata)])
+rates <- rdata$rates
+rdata[, "rates" := NULL]
+rdata <- as.matrix(rdata)[, good]
 
-cat("Running full regressors\n")
-task <- makeRegrTask(id = "nci60", data=as.data.frame(rdata), target="rates")
-task <- normalizeFeatures(task, method="standardize")
-lrn <- list(makeLearner("regr.glmnet", par.vals=list(alpha=0.5)), 
-    makeLearner("regr.randomForestSRC", par.vals=list(ntree=50)), 
-    makeLearner("regr.xgboost", par.vals=list(max_depth=2, eta=1e-1, 
-    nrounds=100, verbose=0)),
-    makeLearner("regr.h2odeep", par.vals=list(hidden=c(100, 100, 100), epochs=10,
-    l1=0.01, l2=0.01)))
-resa <- makeResampleDesc(method = "CV", iters=8)
+cat("Running 1st order regressor\n")
 
-parallelStartSocket(7, show.info=F)
-parallelLibrary("mlr", "h2o")
-parallelExport("makeRLearner.regr.h2odeep", "trainLearner.regr.h2odeep",
-    "predictLearner.regr.h2odeep", "mre")
-h2o.init(nthreads=7)
+pred <- data.frame()
+m <- data.frame()
 
-r <- benchmark(learner = lrn, task = task, resampling = resa, 
-    measures=list(mse, mae, mre), show.info=F)
-train_full <- parallelMap(train_perf, lrn, more.args=list(task=task))
+mod1 <- cv.glmnet(rdata, rates, nfolds=length(rates), keep=T, parallel=T)
+pred_train <- predict(mod1, rdata, s="lambda.min")[,1]
+pred_test <- mod1$fit.preval[, which.min(mod1$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="1st"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="test", order="1st"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="1st"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="test", order="1st"))
+nonzero <- abs(coef(mod1, s="lambda.min")[-1]) > 0
 
+cat("Running 2nd order regressor\n")
 
-cat("Getting feature importance\n")
-rfimp <- rfsrc(rates ~ ., data=rdata, ntree=1000, importance="permute.ensemble")$importance
-readr::write_csv(data.frame(entrez=sub("hsa_", "", names(rfimp)), 
-    importance=rfimp), "rfimportance.csv")
-cutoff <- quantile(rfimp[rfimp > sqrt(.Machine$double.eps)], .99)
-imp <- names(rdata)[rfimp > cutoff]
-cat(sprintf("- kept %d variables\n", length(imp)))
+data2 <- inter(rdata[,nonzero])
+mod2 <- cv.glmnet(data2, rates, nfolds=10, keep=T, parallel=T)
+pred_train <- predict(mod2, data2, s="lambda.min")[,1]
+pred_test <- mod2$fit.preval[, which.min(mod2$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="2nd"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="test", order="2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="test", order="2nd"))
 
-cat("Running reduced regressors\n")
-redtask <- subsetTask(task, features=imp)
+cat("Running 1st + 2nd order regressor\n")
 
-redlrn <- list(makeLearner("regr.glmnet", par.vals=list(alpha=0.5)), 
-    makeLearner("regr.randomForestSRC", par.vals=list(ntree=1000, mtry=length(imp))), 
-    makeLearner("regr.xgboost", par.vals=list(max_depth=2, eta=1e-2, 
-    nrounds=1e3, verbose=0)),
-    makeLearner("regr.h2odeep", par.vals=list(hidden=c(100, 100, 100), 
-    l1=0.01, epochs=10)))
-redsa <- makeResampleDesc(method = "LOO")
+data12 <- cbind(rdata[, nonzero], data2)
+mod3 <- cv.glmnet(data12, rates, nfolds=length(rates), keep=T, parallel=T)
+pred_train <- predict(mod3, data12, s="lambda.min")[,1]
+pred_test <- mod3$fit.preval[, which.min(mod3$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="1st and 2nd"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="test", order="1st and 2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="1st and 2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="test", order="1st and 2nd"))
 
-r_red <- benchmark(learner = redlrn, task = redtask, resampling = redsa, 
-    measures=list(mse, mae, mre), show.info=F)
-train_red <- parallelMap(train_perf, redlrn, more.args=list(task=redtask))
+cat("Reducing model by cutoff\n")
+cf <- as.numeric(coef(mod2, s="lambda.min"))[-1]
+names(cf) <- rownames(coef(mod2))[-1]
+nonzero <- abs(cf) > 1e-3
+data_red <- data2[, nonzero]
+mod <- cv.glmnet(data_red, rates, nfolds=length(rates), keep=T, parallel=T)
+pred_train <- predict(mod, data_red, s="lambda.min")[,1]
+pred_test <- mod$fit.preval[, which.min(mod$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="2nd cutoff"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="test", order="2nd cutoff"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="2nd cutoff"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="test", order="2nd cutoff"))
+
+genes <- do.call(rbind, strsplit(colnames(data_red), "x"))
+colnames(genes) <- c("gene1", "gene2")
+readr::write_csv(data.frame(genes, coef=cf[nonzero]), "best_interactions.csv")
+save(mod, file="glmnet_model.rda")
 
 #Assemble predictions
-preds_test_full <- combine_measures(r$results$nci60, extract=c("pred", "data"))
-test_full_plot <- ggplot(preds_test_full, aes(x=truth, y=response, col=method)) + 
-    geom_abline() + geom_point() + facet_wrap(~method, nrow=1) + theme_bw()
-
-preds <- combine_measures(train_red, extract=c("pred", "data"))
-train_plot <- ggplot(preds, aes(x=truth, y=response, col=method)) + geom_abline() + 
-    geom_point() + facet_wrap(~method, nrow=1) + theme_bw()
-
-measures <- combine_measures(r_red$results$nci60)
-measures <- melt(measures, id.vars=c("iter", "method"))
-cv_plot <- ggplot(measures, aes(x=method, y=value, col=method)) + geom_boxplot() +
-    geom_jitter() + facet_wrap(~variable, scales="free") + theme_bw()
-    
-preds_test <- combine_measures(r_red$results$nci60, extract=c("pred", "data"))
-test_plot <- ggplot(preds_test, aes(x=truth, y=response, col=method)) + geom_abline() + 
-    geom_point() + facet_wrap(~method, nrow=1) + theme_bw()
-
-parallelStop()
-
+pred_plot <- ggplot(pred, aes(x=truth, y=pred, col=order)) + geom_abline() + 
+    geom_point() + facet_grid(set ~ order) + theme_bw()
 
 write("----------\nUsed time:\n----------", file = "")
 print(proc.time() - start_t) 

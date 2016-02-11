@@ -79,9 +79,7 @@ if (!all(colnames(eset_summ) == names(rates))) cat("Wrong cell line ordering!")
 # use only features that have shared Ensembl Gene IDs in NCI60 and TCGA
 devtools::load_all("~/code/tcgar")
 
-shared <- intersect(rownames(eset_summ), rnaseq_bm$ensgene)
-
-export <- data.table(t(eset_summ[shared, ]))
+export <- data.table(t(eset_summ))
 export[, "rates" := rates]
 readr::write_csv(export, "regprob.csv")
 #source("regression.R")
