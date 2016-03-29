@@ -20,7 +20,25 @@ import shutil
 HMRURL = "http://www.metabolicatlas.org/assets/hmr/HMRcollection.xml-8849b3803fdcc7dbd26fea46ef0dcc50.zip"
 
 def download_model(url, basename, dir="models"):
-    """Downloads a model and changes its compression to gzip"""
+    """Downloads a model and changes its compression to gzip
+    
+    Downloads a model in zip format, finds a single XML file 
+    and converts it to a gzip version. Basically this is done
+    since cobrapy can read directly from gzip but not from zip.
+    
+    Args:
+        url: A valid URL string pointing to the location of the
+            model.
+        basename: A string specifying the new name that will be
+            given to the model. Spaces are replaced by underscores.
+        dir: The directory where the gzipped model will be saved.
+    
+    Returns:
+        Nothing.
+    
+    Raises:
+        ValueError: The zip file did not contain a XML file. 
+    """
     os.makedirs(dir, exist_ok=True)
     basename = os.path.join(dir, basename.replace(" ", "_"))
     
@@ -39,7 +57,29 @@ def download_model(url, basename, dir="models"):
     os.remove(basename + ".zip")
 
 def setup_solver(cobra_model, vmax=1.0e16, solver="cglpk", **optimize_kwargs):
-    """setup an LP solver instance for pFBA that can be recycled"""
+    """Setup an LP solver instance for pFBA that can be recycled.
+    
+    Does the initial setup for the pFBA model. Thus, each reaction 
+    is set as part of the objective and the bounds are set to [0, Inf]
+    where Inf is not really infinite (cobrapy does not allow that) but
+    large.
+    
+    Args:
+        cobra_model: A cobra model (class Model) to be set up. Must be
+            irreversible. 
+        vmax: A float setting the upper bound for reactions. If you want an
+            unconstrained model this should be very large.
+        solver: The name of the solver to use. 
+        optimize_kwargs: Optional solver key word arguments.
+    
+    Returns:
+        A tuple (solver, lp, oid) where solver is the set up solver
+        instance, lp the set up LP problem and oid the index of the
+        original objective reaction.
+        
+    Raises:
+        ValueError: There was more than one objective reaction.
+    """
     obj_ids = []
     
     solver = solver_dict[get_solver_name() if solver is None else solver]
@@ -55,14 +95,44 @@ def setup_solver(cobra_model, vmax=1.0e16, solver="cglpk", **optimize_kwargs):
        
     return solver, lp, obj_ids[0]
 
-def to_reversible(irrev_ids, f_dict):
+def to_reversible(rev_ids, f_dict):
+    """Combines irreversible fluxes to reversible ones.
+    
+    Args:
+        rev_ids: A list of srings denoting the IDs of the reversible
+            reactions.
+        f_dict: A dictionary where the keys are the irreversible reaction
+            IDs and the values the corresponding fluxes.
+    
+    Returns:
+        A dictionary where keys denote reversible reactions IDs and values
+        the reversible fluxes.
+    """
     for rid in irrev_ids:
         f_dict[rid] -= f_dict.pop(rid + "_reverse", 0)
     
     return f_dict
 
-def minimize_total_flux(lp, solver, obj_id, vbm, model, **solver_args):
-    """calculate minimum total flux"""
+def minimize_total_flux(solver, lp, obj_id, vbm, model, **solver_args):
+    """Calculate minimum total flux.
+    
+    Obtains the minimum total flux min(sum_i |v_i|) for a given objective value.
+    
+    Args:
+        solver: The solver instance to recycle.
+        lp: The LP problem to modify ine each run.
+        obj_id: The index of the objective reaction.
+        vbm: The upper flux bound.
+        model: The model on which to run.
+        solver_args: Additional keyword arguments passsed to the solver.
+    
+    Returns:
+        A dictionary {id: val, ...} where id denotes the IDs of irreversible
+        reactions and val the flux for that reaction.
+        
+    Raises:
+        ValueError: There is no feasible solution.
+    """
     old = sys.stdout
     f = open(os.devnull, 'w')
     sys.stdout = f
@@ -83,9 +153,9 @@ if __name__ == "__main__":
     
     start = timer()
     
-    tissues = pd.read_csv("tissues.csv").set_index("panel")
+    tissues = pd.read_csv("tissues.csv")
     pred = pd.read_csv("pred_rates.csv")
-    pred = pred[pred["panel"].isin(tissues.index) & pred["tumor"]]
+    pred = pred[pred["panel"].isin(tissues["panel"]) & pred["tumor"]]
     
     # Download cancer models from HMA
     tissues[["url","tissue"]].drop_duplicates().apply(
@@ -97,34 +167,39 @@ if __name__ == "__main__":
     samples = []
     subsystem = defaultdict(lambda: "None")
     co = 0
+    tissues = tissues.set_index("tissue")
     
-    for p in tissues.index.unique():
-        path = os.path.join("models", tissues.loc[p, "tissue"] + ".xml.gz")
+    for ti in tissues.index.unique():
+        path = os.path.join("models", ti + ".xml.gz")
         model = read_sbml_model(path)
+        convert_to_irreversible(model)
         for r in model.reactions: 
             if subsystem[r.id] != "None" and subsystem[r.id] != r.subsystem:
                 raise ValueError("Conflicting subsystem info!")
             subsystem[r.id] = r.subsystem
-        irrev_ids = [r.id for r in model.reactions]
-        convert_to_irreversible(model)
         model.reactions.get_by_id("CancerBiomass_OF").objective_coefficient = 1
         solver, lp, oid = setup_solver(model)
-        data = pred[pred["panel"] == p]
+        panels = tissues.loc[ti, "panel"]
+        if type(panels) == str: panels = [panels] 
+        else: panels = panels.tolist() 
+        data = pred[pred["panel"].isin(panels)]
+        
         for i in range(data.shape[0]):
             if co % (n//100) == 0:
                 print("                             \r", end="")
                 print("Calculated {}% of fluxes...".format(co//(n//100)), end="")
-            samples.append(data["barcode"].iloc[i])
-            rate = max(data["rates"].iloc[i], 0.0)
-            f = minimize_total_flux(lp, solver, oid, rate, model)
-            fluxes.append(to_reversible(irrev_ids, f))
             co += 1
+            rate = data["rates"].iloc[i]
+            if rate <= 0: continue
+            f = minimize_total_flux(solver, lp, oid, rate, model)
+            samples.append(data["barcode"].iloc[i])
+            fluxes.append(f)
     
     print("\nNeeded {:.2f} s.".format(timer() - start))
     
     # Save output and subsystems
     print("Saving non-zero fluxes...")
-    fluxes = pd.DataFrame(fluxes, index=samples)
+    fluxes = pd.DataFrame(fluxes, index=samples).fillna(0)
     fluxes = fluxes.loc[:, fluxes.abs().max() > 1e-6]
     fluxes.to_csv("fluxes.csv")
     
@@ -133,7 +208,8 @@ if __name__ == "__main__":
     model = read_sbml_model(os.path.join("models", "hmr.xml.gz"))
     rids = fluxes.columns.values
     subsystem = {"id": list(subsystem.keys()), "subsystem": list(subsystem.values())}
-    info = pd.DataFrame(subsystem)
+    info = pd.DataFrame(subsystem).set_index("id")
+    info = info.loc[fluxes.columns]
     
     info.to_csv("flux_info.csv")
         
