@@ -5,6 +5,7 @@
 #  MIT license. See LICENSE for more information.
 
 library(ggplot2)
+library(dplyr)
 library(data.table)
 library(survival)
 load("combined.rda")
@@ -51,4 +52,49 @@ dev.off()
 
 coxm <- coxph(Surv(delta, status) ~ comb$rates)
 
+panels <- pred$panel
+names(panels) <- pred$barcode
 
+fluxes <- fread("fluxes.csv")
+barcodes <- fluxes$V1
+fluxes <- as.matrix(fluxes[, V1 := NULL])
+rownames(fluxes) <- barcodes
+info <- fread("flux_info.csv")
+
+
+tissue_lfc <- function(v, map, extra) {
+    p <- map[rownames(v)]
+    
+    out <- NULL
+    
+    out <- lapply(unique(p), function(pname) {
+        ti <- p == pname
+        in_t <- colMeans(v[ti,]) + 1e-6
+        out_t <- colMeans(v[!ti,]) + 1e-6
+        lfcs <- log(in_t, 2) - log(out_t, 2) 
+        
+        res <- data.table(rid=names(in_t), panel=pname, lfc=lfcs)
+        cbind(res, extra)
+    })
+    
+    return(rbindlist(out))
+}
+
+lfcs <- tissue_lfc(fluxes, panels, info[, list(subsystem)])
+summ <- lfcs %>% group_by(rid) %>% summarize(mean=mean(lfc), sd=sd(lfc), 
+    sys=unique(subsystem)) %>% mutate(cv=sd/mean) %>% arrange(desc(mean))
+
+spec <- abs(summ$mean) > quantile(abs(summ$mean), 0.9)
+core <- summ$cv < quantile(summ$cv, 0.10)
+
+#cols <- viridis::viridis(256)
+#s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
+#pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, 
+#    show_colnames=F, annotation_row=as.data.frame(panels), cluster_rows=F, 
+#    file="fluxes.png", width=10, height=12)
+
+lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) + 
+    geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.25) + 
+    theme_bw()
+
+ggsave("lfcs.svg", lfc_plot, width=6, height=4)
