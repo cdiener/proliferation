@@ -42,8 +42,8 @@ cat("Reading data\n")
 rdata <- fread("regprob.csv", header=T)
 load("norm_factor.rda")
 load("join.rda")
-good <- join$ensgene[(join$TCGA_RNA*norm + norm_int - join$NCI60)^2 < 1 &
-    (join$TCGA_MA + norm_int - join$NCI60)^2 < 1]
+good <- join[(tcga_rnaseq*norm + norm_int - nci60_huex)^2 < 1 &
+    (tcga_huex + norm_int - join$nci60_huex)^2 < 1, ensgene]
 #names(rdata)[-ncol(rdata)] <- paste0("hsa_", names(rdata)[-ncol(rdata)])
 rates <- rdata$rates
 rdata[, "rates" := NULL]
@@ -133,7 +133,7 @@ setkey(rdt, ensgene)
 
 entrez <- cbind(rdt[genes[,1], entrez], rdt[genes[,2], entrez])
 rna_ex <- log(tcga$RNASeqV2$counts+1, 2)
-rna_ex <- rna_ex*norm + norm_int
+rna_ex <- rna_ex * norm + norm_int
 rna_red <- t(rna_ex[entrez[,1], ]*rna_ex[entrez[,2], ])
 colnames(rna_red) <- paste0(entrez[,1], "x", entrez[,2])
 rates_rna <- predict(mod, rna_red, s="lambda.min")[,1]
