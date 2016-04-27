@@ -105,12 +105,48 @@ tissue_lfc <- function(v, map, extra) {
     return(rbindlist(out))
 }
 
+ES <- function(p, w, pws) {
+    n <- length(pws)
+    nr <- sum(abs(w[pws == p]))
+    nh <- sum(pws == p)
+
+    scores <- vector(length=n)
+    scores[pws == p] <- abs(w[pws == p])/nr
+    scores[pws != p] <- -1/(n - nh)
+
+    max(abs(cumsum(scores)))
+}
+
+NES <- function(p, w, pws, n=200) {
+    es <- ES(p, w, pws)
+    norm <- replicate(n, ES(p, w, sample(pws)))
+
+    nes <- es/mean(norm)
+    pval <- sum(es < norm)/n
+
+    return(c(nes, pval))
+}
+
+shorten <- function(x, n=32) {
+    sapply(x, function(xi) {
+        xi <- as.character(xi)
+        if (nchar(xi) > n) {
+            xi <- paste0(substr(xi,1,n-1), "...")
+        }
+        xi
+    })
+}
+
 lfcs <- tissue_lfc(fluxes, panels, info[, list(subsystem)])
+lfcs <- lfcs[order(-lfc)]
 summ <- lfcs %>% group_by(rid) %>% summarize(mean=mean(lfc), sd=sd(lfc),
     sys=unique(subsystem)) %>% mutate(cv=sd/mean) %>% arrange(desc(mean))
 
-spec <- abs(summ$mean) > quantile(abs(summ$mean), 0.9)
-core <- summ$cv < quantile(summ$cv, 0.10)
+pws <- lfcs$subsystem
+enr <- sapply(unique(pws), NES, w=lfcs$lfc, pws=pws)
+enr <- data.table(subsystem=colnames(enr), nes=enr[1,], p=enr[2,])
+enr <- enr[order(nes)]
+enr[, subsystem := factor(subsystem, levels=subsystem)]
 
 #cols <- viridis::viridis(256)
 #s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
@@ -123,4 +159,11 @@ lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
     theme_bw() + theme(axis.text.x=element_text(angle = 45, vjust = 1, hjust=1),
     legend.position="none")
 
+enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
+    geom_vline(xintercept=1, linetype="dashed") +
+    geom_point() + scale_colour_continuous(low="red", high="black") +
+    theme_bw() + scale_y_discrete(labels=shorten) +
+    theme(legend.position=c(0.8,0.2)) + xlab("enrichment score") + ylab("")
+
 ggsave("images/lfcs.svg", lfc_plot, width=120, height=100, units="mm")
+ggsave("images/ssea.pdf", enr_plot, width=90, height=180, units="mm", dpi=300, scale=1.3)
