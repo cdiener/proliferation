@@ -8,9 +8,10 @@ library(ggplot2)
 library(dplyr)
 library(data.table)
 library(survival)
+library(pheatmap)
 load("combined.rda")
 
-stage_map <- c("0"="0", "I"="1", "II"="2", "III"="3", "IV"=4)
+stage_map <- c("0"="0", "I"="1", "II"="2", "III"="3", "IV"="4")
 days_per_year <- 365.25
 
 # Panel plot
@@ -79,6 +80,7 @@ ggsave("images/stage.png", width=180, height=70, units="mm", scale=1.2, dpi=300)
 
 panels <- pred$panel
 names(panels) <- pred$barcode
+panels <- sort(panels)
 
 fluxes <- fread("fluxes.csv")
 barcodes <- fluxes$V1
@@ -105,7 +107,7 @@ tissue_lfc <- function(v, map, extra) {
     return(rbindlist(out))
 }
 
-ES <- function(p, w, pws) {
+ES <- function(p, w, pws, both=FALSE) {
     n <- length(pws)
     nr <- sum(abs(w[pws == p]))
     nh <- sum(pws == p)
@@ -113,16 +115,26 @@ ES <- function(p, w, pws) {
     scores <- vector(length=n)
     scores[pws == p] <- abs(w[pws == p])/nr
     scores[pws != p] <- -1/(n - nh)
+    r <- range(cumsum(scores))
+    i <- which.max(abs(r))
+    if (both) i <- 1:2
 
-    max(abs(cumsum(scores)))
+    r[i]
 }
 
 NES <- function(p, w, pws, n=200) {
     es <- ES(p, w, pws)
-    norm <- replicate(n, ES(p, w, sample(pws)))
+    norm <- replicate(n, ES(p, w, sample(pws), both=TRUE))
 
-    nes <- es/mean(norm)
-    pval <- sum(es < norm)/n
+    if (es < 0) {
+        no <- norm[norm < 0]
+        nes <- -es/mean(no)
+        pval <- sum(no < es)/length(no)
+    } else {
+        no <- norm[norm >= 0]
+        nes <- es/mean(no)
+        pval <- sum(no > es)/length(no)
+    }
 
     return(c(nes, pval))
 }
@@ -138,9 +150,7 @@ shorten <- function(x, n=32) {
 }
 
 lfcs <- tissue_lfc(fluxes, panels, info[, list(subsystem)])
-lfcs <- lfcs[order(-lfc)]
-summ <- lfcs %>% group_by(rid) %>% summarize(mean=mean(lfc), sd=sd(lfc),
-    sys=unique(subsystem)) %>% mutate(cv=sd/mean) %>% arrange(desc(mean))
+lfcs <- lfcs[order(-abs(lfc))]
 
 pws <- lfcs$subsystem
 enr <- sapply(unique(pws), NES, w=lfcs$lfc, pws=pws)
@@ -148,16 +158,16 @@ enr <- data.table(subsystem=colnames(enr), nes=enr[1,], p=enr[2,])
 enr <- enr[order(nes)]
 enr[, subsystem := factor(subsystem, levels=subsystem)]
 
-#cols <- viridis::viridis(256)
-#s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
-#pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F,
-#    show_colnames=F, annotation_row=as.data.frame(panels), cluster_rows=F,
-#    file="fluxes.png", width=10, height=12)
+cols <- viridis::viridis(256)
+s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
+pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F,
+    show_colnames=F, annotation_row=as.data.frame(panels), cluster_rows=F,
+    file="images/fluxes.png", width=7, height=4)
 
 lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
     geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.25) +
     theme_bw() + theme(axis.text.x=element_text(angle = 45, vjust = 1, hjust=1),
-    legend.position="none")
+    legend.position="none") + ylab("specificity score")
 
 enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
     geom_vline(xintercept=1, linetype="dashed") +
@@ -165,5 +175,6 @@ enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
     theme_bw() + scale_y_discrete(labels=shorten) +
     theme(legend.position=c(0.8,0.2)) + xlab("enrichment score") + ylab("")
 
-ggsave("images/lfcs.svg", lfc_plot, width=120, height=100, units="mm")
-ggsave("images/ssea.pdf", enr_plot, width=90, height=180, units="mm", dpi=300, scale=1.3)
+ggsave("images/lfcs.png", lfc_plot, width=120, height=100, units="mm")
+ggsave("images/ssea_over.pdf", enr_plot %+% enr[nes > 1], width=90, height=120, units="mm", dpi=300, scale=1.3)
+ggsave("images/ssea_under.pdf", enr_plot %+% enr[nes <= 1], width=90, height=70, units="mm", dpi=300, scale=1.3)
