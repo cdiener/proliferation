@@ -11,30 +11,6 @@ library(glmnet)
 library(ggplot2)
 devtools::load_all("~/code/tcgar")
 
-measures = function(truth, pred) {
-    res <- truth - pred
-    mse <- mean(res^2)
-    rmse <- sqrt(mse)
-    mae <- mean(abs(res))
-    mre <- mean(abs(res)/abs(truth))
-    rsq <- 1 - sum(res^2)/sum((truth - mean(truth))^2)
-
-    c(mse=mse, rmse=rmse, mae=mae, mre=mre, rsq=rsq)
-}
-
-inter = function(M) {
-    nam <- colnames(M)
-    out <- NULL
-    for(i in 1:ncol(M)) {
-        newnames <- paste0(nam[i], "x", colnames(M[, i:ncol(M), drop=F]))
-        x <- M[, i]*M[, i:ncol(M), drop=F]
-        colnames(x) <- newnames
-        out <- cbind(out, x)
-    }
-
-    return(out)
-}
-
 start_t <- proc.time()
 registerDoParallel(cl=6)
 
