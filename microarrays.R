@@ -9,6 +9,7 @@ library(doParallel)
 registerDoParallel(cl=6)
 library(oligo)
 library(data.table)
+library(prtools)
 
 cat("Loading ExpressionSet and assigning annotations...\n")
 if (file.exists("eset_raw.Rd")) load("eset_raw.Rd") else {

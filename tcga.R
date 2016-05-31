@@ -4,9 +4,9 @@
 #
 #  MIT license. See LICENSE for more information.
 
-devtools::load_all("~/code/tcgar")
 library(data.table)
 library(ggplot2)
+library(tcgar)
 
 cat("Reading TCGA data..\n")
 

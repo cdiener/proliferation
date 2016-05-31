@@ -9,7 +9,8 @@ library(doParallel)
 library(foreach)
 library(glmnet)
 library(ggplot2)
-devtools::load_all("~/code/tcgar")
+library(tcgar)
+library(prtools)
 
 start_t <- proc.time()
 registerDoParallel(cl=6)
@@ -119,13 +120,13 @@ pred <- data.table(barcode=c(names(rates_rna), names(rates_huex)),
     rates=c(rates_rna, rates_huex),
     panel=c(tcga$RNASeqV2$samples$panel, tcga$HuEx$samples$panel[!controls]),
     tumor=c(tcga$RNASeqV2$samples$tumor, tcga$HuEx$samples$tumor[!controls]))
-pred <- unique(pred, by="barcode")
+#pred <- unique(pred, by="barcode")
 
 comb <- merge(pred, tcga$clinical$samples, by=c("barcode", "tumor", "panel"))
 comb <- merge(comb, tcga$clinical$patient, by=c("patient_uuid", "patient_barcode"))
 
 save(pred, comb, file="combined.rda")
-
+readr::write_csv(pred, "pred_rates.csv")
 
 write("----------\nUsed time:\n----------", file = "")
 print(proc.time() - start_t)

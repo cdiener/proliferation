@@ -2,7 +2,23 @@
 ##
 ## MIT license. See LICENSE for more information.
 
-tissue_lfc <- function(v, map, extra) {
+#' Calculates flux log-fold changes between in-tissue and out-tissue samples.
+#'
+#' `tissue_lfc` takes values for fluxes across different tissues and calculates
+#' the log-fold changes between the flux in a given target tissue against all
+#' all other tissues, for all tissues.
+#'
+#' @param v A matrix of fluxes where columns denote samples across different
+#' tissues and rows denote fluxes.
+#' @param map A map translating the column names of v to their specific tissue.
+#' @param extra Optional data.frame with as many rows as rows in v that contains
+#' additional information about the fluxes that should be appended to the results.
+#' @return A data.table containing the log-fold changes for each flux and tissue.
+#' @examples
+#'  NULL
+#'
+#' @export
+tissue_lfc <- function(v, map, extra=NULL) {
     p <- map[rownames(v)]
 
     out <- NULL
@@ -20,6 +36,20 @@ tissue_lfc <- function(v, map, extra) {
     return(rbindlist(out))
 }
 
+#' Calculates GSEA-like enrichment scores.
+#'
+#' @param p The name of the pathway for which the enrichment score is to be
+#' calculated.
+#' @param w A ranked vector of values/weights.
+#' @param pws A vector with as many entries as in w, assigning a pathway to each
+#' entry in w.
+#' @param both Optional logical parameter. Should the enrichment score be
+#' separated by negative/positive values.
+#' @return The enrichment score.
+#' @examples
+#'  NULL
+#'
+#' @export
 ES <- function(p, w, pws, both=FALSE) {
     n <- length(pws)
     nr <- sum(abs(w[pws == p]))
@@ -35,6 +65,23 @@ ES <- function(p, w, pws, both=FALSE) {
     r[i]
 }
 
+#' Calculates the normalized enrichment scores.
+#'
+#' Calculates es/mean(perm), where perm is a set of n random permutations
+#' of pathway labels.
+#'
+#' @param p The name of the pathway for which the enrichment score is to be
+#' calculated.
+#' @param w A ranked vector of values/weights.
+#' @param pws A vector with as many entries as in w, assigning a pathway to each
+#' entry in w.
+#' @param n The number of random permutations to generate.
+#' @return A vector with two elements: the normalized enrichment score and an
+#' empirical, uncorrected p-value for it.
+#' @examples
+#'  NULL
+#'
+#' @export
 NES <- function(p, w, pws, n=200) {
     es <- ES(p, w, pws)
     norm <- replicate(n, ES(p, w, sample(pws), both=TRUE))
@@ -52,12 +99,24 @@ NES <- function(p, w, pws, n=200) {
     return(c(nes, pval))
 }
 
+#' Shorten a string to given length.
+#'
+#' @param x A string or vector of strings to be shortened.
+#' @param n The maximum length of the resulting string(s).
+#' @return The shortened string(s).
+#' @examples
+#' print(shorten("bla"))
+#' print(shorten("blablablablablablablablablablablablablablablabla"))
+#'
+#' @export
 shorten <- function(x, n=32) {
-    sapply(x, function(xi) {
+    short <- sapply(x, function(xi) {
         xi <- as.character(xi)
         if (nchar(xi) > n) {
             xi <- paste0(substr(xi,1,n-1), "...")
         }
         xi
     })
+
+    unname(short)
 }

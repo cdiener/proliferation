@@ -9,6 +9,8 @@ library(dplyr)
 library(data.table)
 library(survival)
 library(pheatmap)
+library(prtools)
+
 load("combined.rda")
 
 stage_map <- c("0"="0", "I"="1", "II"="2", "III"="3", "IV"="4")
@@ -50,7 +52,7 @@ fit <- survfit(surv ~ prolif)
 
 svglite::svglite("images/surv.svg", width=5, height=4.5)
 par(mar=c(4,4,1,1))
-plot(fit, col=c("blue", "red"), xlab="time [years]", ylab="survival")
+plot(fit, col=c("blue", "red"), xlab="time [years]", ylab="survival", lwd=4)
 grid()
 dev.off()
 
@@ -99,10 +101,12 @@ enr <- enr[order(nes)]
 enr[, subsystem := factor(subsystem, levels=subsystem)]
 
 cols <- viridis::viridis(256)
+annrow <- as.data.frame(panels[!duplicated(names(panels))])
+names(annrow) <- "panel"
 s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
-pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F,
-    show_colnames=F, annotation_row=as.data.frame(panels), cluster_rows=F,
-    file="images/fluxes.png", width=7, height=4)
+pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, cellwidth=0.4, cellheight=0.07,
+    show_colnames=F, annotation_row=annrow, cluster_rows=F, border_color=NA,
+    file="images/fluxes.png", width=8, height=4.5)
 
 lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
     geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.25) +
