@@ -1,0 +1,10 @@
+name,panel,tissue,url
+Bladder Urothelial Carcinoma,BLCA,urothelial,"http://www.metabolicatlas.org/assets/initcan/r3/urothelial_cancer_-__3.xml-b391ad03203294d3a420001c843d2fce.zip"
+Breast invasive carcinoma,BRCA,breast,"http://www.metabolicatlas.org/assets/initcan/r3/breast_cancer_-__3.xml-4297bbc8636e6b22818d180b44898384.zip"
+Cholangiocarcinoma,CHOL,liver,"http://www.metabolicatlas.org/assets/initcan/r3/liver_cancer_-__3.xml-07bff95988866a0e32afc4a0f072ebc9.zip"
+Kidney Chromophobe,KICH,kidney,"http://www.metabolicatlas.org/assets/initcan/r3/renal_cancer_-__3.xml-bb999a8ccff9ebd687264b98d821622b.zip"
+Kidney renal clear cell carcinoma,KIRC,kidney,"http://www.metabolicatlas.org/assets/initcan/r3/renal_cancer_-__3.xml-bb999a8ccff9ebd687264b98d821622b.zip"
+Kidney renal papillary cell carcinoma,KIRP,kidney,"http://www.metabolicatlas.org/assets/initcan/r3/renal_cancer_-__3.xml-bb999a8ccff9ebd687264b98d821622b.zip"
+Liver hepatocellular carcinoma,LIHC,liver,"http://www.metabolicatlas.org/assets/initcan/r3/liver_cancer_-__3.xml-07bff95988866a0e32afc4a0f072ebc9.zip"
+Lung adenocarcinoma,LUAD,lung,"http://www.metabolicatlas.org/assets/initcan/r3/lung_cancer_-__3.xml-bf4255bf7e786330b1e66238ae41b966.zip"
+Lung squamous cell carcinoma,LUSC,lung,"http://www.metabolicatlas.org/assets/initcan/r3/lung_cancer_-__3.xml-bf4255bf7e786330b1e66238ae41b966.zip"
