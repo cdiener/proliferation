@@ -3,3 +3,10 @@
 language: R
 sudo: false
 cache: packages
+r: bioc-release
+
+before_install:
+    - cd prtools
+
+after_success:
+    - Rscript -e "covr::codecov()"
