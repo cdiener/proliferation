@@ -24,7 +24,7 @@ TCGA
 
 # Rdata file
 *.rda
-*.Rd
+*.rds
 *.csv
 *.zip
 *.tar.gz
