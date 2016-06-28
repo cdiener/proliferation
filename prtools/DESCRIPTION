@@ -1,5 +1,5 @@
 Package: prtools
-Title: Helper library for inferring proliferations rates on a per-patient basis.
+Title: Helper library for inferring proliferations rates on a per-patient basis
 Version: 0.1
 Authors@R: person("Christian", "Diener", email = "mail@cdiener.com", role = c("aut", "cre"))
 Description: This package includes helper functions for exome expression
@@ -7,15 +7,19 @@ Description: This package includes helper functions for exome expression
 Depends:
     R (>= 3.3.0),
     RcppProgress
-License: MIT. See LICENSE file.
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 LinkingTo: Rcpp, RcppProgress
 Imports:
     Rcpp,
+    Biobase,
     data.table,
     tcgar,
-    survival
+    survival,
+    foreach,
+    doParallel,
+    oligo
 Remotes: github::cdiener/tcgar
 RoxygenNote: 5.0.1
 Suggests: testthat

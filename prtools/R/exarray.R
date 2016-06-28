@@ -17,7 +17,9 @@ NULL
 #' @param features A character vector of features to be grouped.
 #' @param groups A factor or character vector mapping the entries in
 #'  \code{features} to groups.
-#' @param mean The reduction method. Must be one of 'mean', 'median' or 'max'.
+#' @param method The reduction method. Must be one of 'mean', 'median' or 'max'.
+#'  Note that these are the geometric versions, meaning they operate on the log
+#'  expression values.
 #' @param progress Should progress information be shown.
 #' @return A new ExpressionSet with features given by \code{unique(groups)}.
 #'
