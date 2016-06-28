@@ -8,9 +8,9 @@
 #' the log-fold changes between the flux in a given target tissue against all
 #' all other tissues, for all tissues.
 #'
-#' @param v A matrix of fluxes where columns denote samples across different
-#' tissues and rows denote fluxes.
-#' @param map A map translating the column names of v to their specific tissue.
+#' @param v A matrix of fluxes where rows denote samples across different
+#' tissues and columns denote fluxes.
+#' @param map A map translating the row names of v to their specific tissue.
 #' @param extra Optional data.frame with as many rows as rows in v that contains
 #' additional information about the fluxes that should be appended to the results.
 #' @return A data.table containing the log-fold changes for each flux and tissue.
@@ -30,7 +30,8 @@ tissue_lfc <- function(v, map, extra=NULL) {
         lfcs <- log(in_t, 2) - log(out_t, 2)
 
         res <- data.table(rid=names(in_t), panel=pname, lfc=lfcs)
-        cbind(res, extra)
+        if (!is.null(extra)) res <- cbind(res, extra)
+        res
     })
 
     return(rbindlist(out))
