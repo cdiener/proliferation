@@ -1,0 +1,9 @@
+box: rocker/hadleyverse
+build:
+    steps:
+        - jimhester/r-dependencies:
+            cwd: prtools
+        - inbobmk/r-check:
+            cwd: prtools
+        - inbobmk/r-coverage:
+            cwd: prtools
