@@ -33,3 +33,6 @@ TCGA
 *.png
 *.svg
 *.pdf
+
+# wercker
+_*
