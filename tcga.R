@@ -4,9 +4,8 @@
 #
 #  MIT license. See LICENSE for more information.
 
-library(data.table)
+library(prtools)
 library(ggplot2)
-library(tcgar)
 
 cat("Reading TCGA data..\n")
 
@@ -15,7 +14,7 @@ folders <- file.path("TCGA", folders)
 
 if (!file.exists("tcga.rda")) {
     start <- proc.time()
-    tcga <- read_bulk(folders)
+    tcga <- tcgar::read_bulk(folders)
     write("------Read data------", file="")
     print(proc.time() - start)
     gc()

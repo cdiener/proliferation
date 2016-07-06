@@ -14,12 +14,14 @@ LinkingTo: Rcpp, RcppProgress
 Imports:
     Rcpp,
     Biobase,
+    biomaRt,
     data.table,
     tcgar,
     survival,
     foreach,
     doParallel,
-    oligo
+    oligo,
+    glmnet
 Remotes: github::cdiener/tcgar
 RoxygenNote: 5.0.1
 Suggests: testthat

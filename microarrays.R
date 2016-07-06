@@ -4,34 +4,40 @@
 #
 #  MIT license. See LICENSE for more information.
 
-library(foreach)
-library(doParallel)
-registerDoParallel(cl=6)
+library(prtools)
 library(oligo)
 library(data.table)
-library(prtools)
+library(foreach)
+
+doParallel::registerDoParallel(cl=6)
 
 cat("Loading ExpressionSet and assigning annotations...\n")
-if (file.exists("eset_raw.Rd")) load("eset_raw.Rd") else {
+if (file.exists("eset_raw.rds")) eset_raw <- readRDS("eset_raw.rda") else {
     celfiles <- list.celfiles(recursive=T, listGzipped=T)
     raw_data <- read.celfiles(celfiles)
     eset <- rma(raw_data, target="probeset")
     rm(raw_data)
-    save(eset, file="eset_raw.rda")
+    saveRDS(eset, file="eset_raw.rds")
 }
 
-genemap <- fread("genemap.csv", colClasses=rep("character", 7),
-    na.strings=c("NA",""))
-genemap <- unique(genemap, by=c("huex", "ensgene"))
-setkey(genemap, huex)
+if (file.exists("genemap.rda")) genemap <- readRDS("genemap.rds") else {
+    ensembl = useMart("ensembl",dataset="hsapiens_gene_ensembl")
+    attrs <- c("ensembl_gene_id", "description", "external_gene_name", "ucsc",
+        "entrezgene", "affy_huex_1_0_st_v2")
+    genemap <- getBM(mart=ensembl, attributes=attrs)
+    genemap <- data.table(genemap)
+    names(genemap) <- c("ensgene", "description", "symbol", "ucsc", "entrez", "huex")
+    saveRDS(genemap, "genemap.rds")
+}
 
+genemap <- unique(genemap, by=c("ensgene", "huex"))
+setkey(genemap, huex)
 eset <- eset[rownames(eset) %in% genemap$huex, ]
 genemap <- genemap[huex %in% rownames(eset) & !is.na(ensgene)]
 
 cat("Reducing ExpressionSet...\n")
 # Summarize by Ensembl Gene
 eset <- eset_reduce(eset, genemap$huex, genemap$ensgene)
-save(eset, file="eset.rda")
 
 samples <- fread("samples.csv")
 

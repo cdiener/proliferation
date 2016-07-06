@@ -2,5 +2,5 @@
 ##
 ## MIT license. See LICENSE for more information.
 
-#' @import RcppProgress data.table oligo foreach doParallel survival tcgar glmnet biomaRt
-NULL
+library(prtools)
+library(oligo)
