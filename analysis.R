@@ -5,7 +5,6 @@
 #  MIT license. See LICENSE for more information.
 
 library(ggplot2)
-library(dplyr)
 library(data.table)
 library(survival)
 library(pheatmap)

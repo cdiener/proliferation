@@ -7,10 +7,10 @@
 tissue_lfc(v, map, extra = NULL)
 }
 \arguments{
-\item{v}{A matrix of fluxes where columns denote samples across different
-tissues and rows denote fluxes.}
+\item{v}{A matrix of fluxes where rows denote samples across different
+tissues and columns denote fluxes.}
 
-\item{map}{A map translating the column names of v to their specific tissue.}
+\item{map}{A map translating the row names of v to their specific tissue.}
 
 \item{extra}{Optional data.frame with as many rows as rows in v that contains
 additional information about the fluxes that should be appended to the results.}

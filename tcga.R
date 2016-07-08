@@ -7,19 +7,16 @@
 library(prtools)
 library(ggplot2)
 
-cat("Reading TCGA data..\n")
+# Read TCGA data
 
 folders <- dir("TCGA", pattern="[A-Z]{2,4}$", include.dirs=T)
 folders <- file.path("TCGA", folders)
 
-if (!file.exists("tcga.rda")) {
-    start <- proc.time()
+if (!file.exists("tcga.rds")) {
     tcga <- tcgar::read_bulk(folders)
-    write("------Read data------", file="")
-    print(proc.time() - start)
     gc()
-    save(tcga, file="tcga.rda")
-} else load("tcga.rda")
+    saveRDS(tcga, file="tcga.rds")
+} else tcga <- readRDS("tcga.rds")
 
 all_rnaseq <- log(rowMeans(tcga$RNASeqV2$counts)+1, 2)
 all_rnaseq <- data.table(entrez=tcga$RNASeqV2$features$entrez,
@@ -32,14 +29,14 @@ rates <- nci60$rates
 nci60[, rates := NULL]
 all_nci60 <- data.table(ensgene=colnames(nci60), nci60_huex=colMeans(nci60))
 
-ints <- fread("best_interactions.csv", header=T)
-genes <- unique(c(ints$gene1, ints$gene2))
-
 join <- merge(as.data.table(rnaseq_bm), all_nci60, by="ensgene")
 join <- merge(join, all_huex, by="symbol")
 join <- merge(join, all_rnaseq, by="entrez")
 dupes <- join$ensgene[duplicated(join$ensgene)]
 join <- join[!(join$ensgene %in% dupes), ]
+
+ints <- fread("best_interactions.csv", header=T)
+genes <- unique(c(ints$gene1, ints$gene2))
 imp <- join[ensgene %in% genes]
 
 cat("Comparing HuEx - NCI60\n")
@@ -73,5 +70,5 @@ rna_plot <- ggplot(join, aes(x=tcga_rnaseq, y=nci60_huex)) + geom_point(alpha=0.
 ggsave("images/rnaseq.png", rna_plot, width=100, height=90, units="mm", dpi=300)
 
 cat("Extracting joined samples...\n")
-save(join, file="join.rda")
-save(norm, norm_int, file="norm_factor.rda")
+saveRDS(join, "join.rds")
+saveRDS(c(norm, norm_int), file="norm_factor.rds")

@@ -4,7 +4,7 @@
 \alias{eset_reduce}
 \title{Reduces an ExpressionSet by an n-to-n map of features to groups.}
 \usage{
-eset_reduce(eset, features, groups, method = "mean", progress = TRUE)
+eset_reduce(eset, features, groups, method = "mean")
 }
 \arguments{
 \item{eset}{An ExpressionSet object.}
@@ -17,8 +17,6 @@ eset_reduce(eset, features, groups, method = "mean", progress = TRUE)
 \item{method}{The reduction method. Must be one of 'mean', 'median' or 'max'.
 Note that these are the geometric versions, meaning they operate on the log
 expression values.}
-
-\item{progress}{Should progress information be shown.}
 }
 \value{
 A new ExpressionSet with features given by \code{unique(groups)}.

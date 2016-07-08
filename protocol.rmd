@@ -1,0 +1,552 @@
+---
+title: "Analysis Protocol"
+author: "Christian Diener, Osbaldo Resendis"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: paper
+    pdf_document:
+        toc: true
+        number_sections: true
+---
+
+# Installation
+
+This repository is structured to enable easy installation of the required
+dependencies. This is enabled by the `prtools` R package that serves two
+major purposes:
+
+1. It includes auxiliary functions and tests that are used during the analysis
+2. It depends on all other R packages that are used throughout the analysis. Thus,
+installing the `prtools` package will also ensure that all other required
+packages are installed.
+
+We also provide a Docker container which has everything pre-installed and can
+be used to run the analysis on a server in the cloud.
+
+This repository also includes `<step>.R` files for all steps of the analysis
+which you can use to run parts of the analysis in an automated manner. Additional
+data file are also contained in this repository. In order to obtain a local
+copy you can clone the repository with [git](https://git-scm.org).
+
+```bash
+git clone cdiener/proliferation
+```
+
+## Local installation
+
+For a local installation you will require `R` installed (see http://r-project.org
+for installation instructions). You will also require `Python` and `cobrapy`
+if you want to run the metabolic modeling part of the analysis.
+
+To install the R dependencies, first install bioconductor and devtools if
+you do not have them installed already. Start up R and use the following:
+
+```{r, eval=FALSE}
+install.packages("devtools")
+source("https://bioconductor.org/biocLite.R")
+biocLite()
+```
+
+After that you can install `prtools` simply via
+
+```{r, eval=FALSE}
+devtools::install_github("cdiener/proliferation/prtools")
+```
+
+The Python dependencies can be installed via pip, however, that will take a
+while. We recommend installation with the Anaconda Python distribution (see
+https://www.continuum.io/downloads for installation instructions). You will
+require the version using Python 3. You can now install cobrapy from
+[bioconda](https://bioconda.github.io/) using the following commands in a
+Terminal:
+
+```bash
+conda install -c bioconda cobrapy
+```
+
+## Using the docker image
+
+In order to run this image in the cloud you will need a server with docker
+installed. The easiest way to do so is to start a virtual machine that
+already has it installed such as the [CoreOS](https://coreos.com/) machines
+on Amazon AWS, Google Cloud or Digital Ocean.
+
+Either run the following on your local machine or your cloud server:
+
+```bash
+docker run -d -p 8000:8787 cdiener/proliferation
+```
+
+Now navigate to http://your-ip:8000 on your local machine (ip will be "localhost")
+or your server in the cloud in order to see an Rstudio client. You will be prompted
+for a user and password which are both set to "rstudio" by default.
+
+# Getting the data
+
+We will start by getting all the required data. You will need about 500 GB of disk
+space for all the downloads. This step is the longest during this analysis.
+
+First, we will download the HuEx 1.0 ST exon expression data for the NCI-60 cell
+lines using the `GEOquery` package (about 9 GB).
+
+```{r, eval=FALSE}
+GEOquery::getGEOSuppFiles("GSE29682")
+untar("GSE29682/GSE29682_RAW.tar", exdir="GSE29682")
+```
+
+We follow this by downloading all relevany TCGA data as well (about 310 GB).
+Here, we use the [tcgar](https://github.com/cdiener/tcgar) package which we
+wrote specifically for this analysis. We will save the data into the `TCGA`
+subfolder with another subfolder for each cancer panel.
+
+```{r, eval=FALSE}
+create.dir("TCGA")
+setwd("TCGA")
+panels <- tcgar::get_panels()
+none <- sapply(panels, tcgar::get_data, tech=c("clinical", "HuEx", "RNASeqV2"))
+setwd("..")
+```
+
+Finally, we will also get annotations that relate all the genes from the NCI-60
+and TCGA data sets. Here, we will employ biomart to obtain mappings between the
+probes on the HuEx microarrays and several Gene ID systems. This step is optional
+since the generated `genemap.rds` file is contained in the repository as well.
+
+```{r, eval=FALSE}
+library(biomaRt)
+library(data.table)
+
+ensembl = useMart("ensembl",dataset="hsapiens_gene_ensembl")
+attrs <- c("ensembl_gene_id", "description", "external_gene_name", "ucsc",
+    "entrezgene", "affy_huex_1_0_st_v2")
+genemap <- getBM(mart=ensembl, attributes=attrs)
+genemap <- data.table(genemap)
+names(genemap) <- c("ensgene", "description", "symbol", "ucsc", "entrez", "huex")
+saveRDS(genemap, "genemap.rds")
+```
+
+
+# Preprocessing exon expression data
+
+## Normalization and summary
+
+We will start by preparing the HuEx exon expression data for the NCI-60 data
+set. Here, we will read all of the raw files, calculate the log expression values
+and normalize the arrays with RMA. This will take about 16 GB of RAM and take a
+while. If you have several cores available on your machine we recommend to use
+them here. To use 6 core for do the following:
+
+```{r}
+library(foreach)
+doParallel::registerDoParallel(cl=6)
+```
+
+Finally, we will save this raw expression set
+to a serialized format, so we do not have to repeat this step every time.
+This will take about half an hour.
+
+```{r}
+library(prtools)
+library(oligo)
+library(data.table)
+
+if (file.exists("eset_raw.rds")) eset <- readRDS("eset_raw.rds") else {
+    celfiles <- list.celfiles(recursive=T, listGzipped=T)
+    raw_data <- read.celfiles(celfiles)
+    eset <- rma(raw_data, target="probeset")
+    rm(raw_data)
+    saveRDS(eset, file="eset_raw.rds")
+}
+```
+
+The expression values we obtain this way are on the level of "probe sets",
+sets of spots on the microarray. However, in order to obatin expression values
+per gene we have to summarize those probe set expression values. For this we can
+use `genemap.rds` mapping that we obtained earlier. First, we will prepare the
+genemap to give us unique mappings between genes and probe sets. We will only
+consider genes that map to a probe set that is present on our arrays and we will
+also only use probe sets that map to a gene with a known ENSEMBL ID.
+
+```{r}
+genemap <- readRDS("genemap.rds")
+genemap <- unique(genemap, by=c("ensgene", "huex"))
+genemap[, huex := as.character(huex)]
+setkey(genemap, huex)
+eset <- eset[rownames(eset) %in% genemap$huex, ]
+genemap <- genemap[huex %in% rownames(eset) & !is.na(ensgene)]
+```
+
+We now have a mapping of probe sets to genes and vice versa. We will use that
+to summarize the log gene expression values into the geometric mean for each
+gene. For that we can use the `eset_reduce` function from the `prtools` package
+which does that rapidly (because it is implemented in C++).
+
+```{r}
+eset <- eset_reduce(eset, genemap$huex, genemap$ensgene)
+```
+
+## Joining with proliferation data
+
+We now have the per-gene log expression values for each of the 178 microarrays
+in our data set. In order to map those arrays to their respective cell line
+we can use the annotations contained in `samples.csv`:
+
+```{r}
+samples <- fread("samples.csv")
+head(samples)
+```
+
+So we see that there are 2-3 reptitions for each cell line. The actual growth
+rates are contained in `growth_rates.csv`:
+
+```{r}
+gcs <- fread("growth_rates.csv")
+head(gcs)
+```
+
+Now, we will reduce the individual repetitions for each cell line to its mean
+log expression values and relate the cell lines in the microarray samples
+to the ones in the gowth rate data set.
+
+```{r}
+setkey(gcs, cell_line)
+cell_lines <- intersect(gcs$cell_line, samples$cell_line)
+eset_summ <- sapply(cell_lines, function(cl) rowMeans(exprs(eset)[,samples$cell_line==cl]))
+colnames(eset_summ) <- cell_lines
+```
+
+Right, now proliferation is given in doubling time (in hours), so we will convert
+those to proliferation rates and also run a quick check whether the proliferation
+rates are ordered the same way as the microarray samples.
+
+```{r}
+rates <- gcs[cell_lines, log(2)/doubling_time]
+names(rates) <- cell_lines
+if (all(colnames(eset_summ) == names(rates))) cat("Ordering is the same :)")
+```
+
+## Exporting the regression problem
+
+Finally, we will attach the proliferation rates as an aditional columns to the
+expression values, thus, each row now denotes a cell line, and each column a
+gene, where only the last column denotes the proliferation rates. This is
+a common format for regression and classification problems and we will save
+it in csv format, so that it can be used easily in other software.
+
+```{r}
+export <- data.table(t(eset_summ))
+export[, "rates" := rates]
+readr::write_csv(export, "regprob.csv")
+```
+
+# Preparing TCGA data
+
+## Reading the data
+
+First we will start by reading the TCGA data into RAM. The `tcgar` package
+does this efficiently and stores the results in a list with one sublist
+for each technology.
+
+First, we identify all the cancer panels folders:
+
+```{r}
+folders <- dir("TCGA", pattern="[A-Z]{2,4}$", include.dirs=T)
+folders <- file.path("TCGA", folders)
+head(folders)
+```
+
+Now we can read the data using `read_bulk` function from `tcgar`. Again, we will
+save the output in a serialized file.
+
+```{r}
+library(tcgar)
+
+if (!file.exists("tcga.rds")) {
+    tcga <- read_bulk(folders)
+    saveRDS(tcga, file="tcga.rds")
+} else tcga <- readRDS("tcga.rds")
+```
+
+## Comparison to NCI-60 cell line data
+
+In order to compare gene expression between the TCGA RNA-Seq data and NCI-60
+microarrays we will need to create a data set that contains the mean expression
+values for all genes that are contained in the TCGA *and* NCI-60 data. For that,
+we begin by calculating the mean log expression values across all samples within
+the TCGA and NCI-60 data (RNA-Seq abundances are measured in counts, so we have
+to add a pseudo count in order to obtain the log). We begin by calculating the
+means for the RNA-Seq and HuEx data contained in the TCGA data set.
+
+```{r}
+all_rnaseq <- log(rowMeans(tcga$RNASeqV2$counts)+1, 2)
+all_rnaseq <- data.table(entrez=tcga$RNASeqV2$features$entrez,
+    tcga_rnaseq=all_rnaseq)
+all_huex <- data.table(symbol=tcga$HuEx$features$symbol,
+    tcga_huex=rowMeans(tcga$HuEx$assay))
+```
+
+We also do the same for the NCI-60 HuEx data.
+
+```{r}
+nci60 <- fread("regprob.csv", header=T)
+rates <- nci60$rates
+nci60[, rates := NULL]
+all_nci60 <- data.table(ensgene=colnames(nci60), nci60_huex=colMeans(nci60))
+```
+
+We will now join those data sets by mapping their respective IDs. `tcgar` already
+comes with a table mapping the genes in TCGA between different IDs, `rnaseq_bm`.
+
+```{r}
+join <- merge(as.data.table(rnaseq_bm), all_nci60, by="ensgene")
+join <- merge(join, all_huex, by="symbol")
+join <- merge(join, all_rnaseq, by="entrez")
+head(join)
+```
+
+Sometimes, those mapping between IDs are not unique, which makes it impossible to
+identify unique gene expression values. We will remove those cases.
+
+```{r}
+dupes <- join$ensgene[duplicated(join$ensgene)]
+print(sum(join$ensgene %in% dupes))
+join <- join[!(join$ensgene %in% dupes), ]
+saveRDS(join, "join.rds")
+```
+
+That gives us our joined gene expression data set.
+
+## Identifying genes with conserved expression {.tabset .tabset-fade .tabset-pills}
+
+
+In order to use gene expression data from the NCI-60 data set for predictions
+on the TCGA data set, we first have to find a set of genes with very similar
+expression values between cell lines and human samples. As described in the
+manuscript, we consider gene expression to be conserved if the expression values
+are correlated, meaning that the gene expression values between the two data sets
+follow a linear relationship. We could estimate the slope and intercept directly
+from TCGA RNA-Seq and NCI-60 HuEx data, however, a more stable approach is to
+estimate both parameters independently from addtional data we have.
+
+---
+
+### Estimating the intercept
+
+The intercept describes a constant difference in log expression values between
+the two data set. We can estimate is simply by using data obtained with the
+same technology between the two data sets. Since we have HuEx expression data
+from NCI-60 as well as the TCGA data set, the intercept can be calculated as
+the difference in mean between the HuEx data sets.
+
+```{r}
+norm_int <- mean(join$nci60_huex) - mean(join$tcga_huex)
+```
+
+As we can see, using this correction both HuEx data sets relate well with
+each other.
+
+```{r}
+library(ggplot2)
+
+ggplot(join, aes(x=tcga_huex, y=nci60_huex)) + geom_point(alpha=0.1, stroke=0) +
+    geom_abline(intercept=norm_int, size=3/4, col="dodgerblue") +
+    geom_abline(intercept=sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
+    geom_abline(intercept=-sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
+    ylab("NCI60 HuEx") + theme_bw()
+```
+
+Here, the dashed blue lines denote the area in which genes have a maximum distance
+of 1 from the 1:1 relation denotes by the solid blue line.
+
+### Estimating the slope
+
+The slope of the linear relationship denotes a difference between technologies.
+It can be obtained by comparing the two technologies, HuEx and RNA-Seq, within
+the same data set.
+
+```{r}
+norm_slope <- coef(glm(tcga_huex ~ tcga_rnaseq + 0, data=join))
+```
+
+Again, we see that the majority of genes follows this relationship. However,
+there also some genes whose expression values are not comparable, even within
+the TCGA data set.
+
+```{r}
+ggplot(join, aes(x=tcga_rnaseq, y=tcga_huex)) + geom_point(alpha=0.1, stroke=0) +
+    geom_abline(slope=norm_slope, size=3/4, col="dodgerblue") +
+    xlab("TCGA RNA-seq") + ylab("TCGA HuEx") + theme_bw()
+```
+
+### Validation
+
+Finally, we can validate the two parameters by using the TCGA RNA-Seq data and
+the NCI-60 HuEx data.
+
+```{r}
+ggplot(join, aes(x=tcga_rnaseq, y=nci60_huex)) + geom_point(alpha=0.1, stroke=0) +
+    geom_abline(slope=norm_slope, intercept=norm_int, size=3/4, col="dodgerblue") +
+    geom_abline(slope=norm_slope, intercept=sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
+    geom_abline(slope=norm_slope, intercept=-sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
+    ylab("NCI60 HuEx") + theme_bw()
+
+measures(join$nci60_huex, norm_slope * join$tcga_rnaseq + norm_int)
+```
+
+Using both parameters we see a good agreement between the data, however, there
+also genes that do not follow the linear relationship. Since, we are only interested
+in genes with a conserved expression across the two data sets, we will only consider
+genes in the further analysis that do not differ by a log fold change more than 1
+between the two normalized data sets (area enclosed by dashed blue lines).
+
+# Regression and prediction
+
+We now have a way of normalizing the gene expression data between TCGA and NCI-60
+and a criterion to select conserved genes only. Thus, we can now start with the
+regression problem. We start by reading the regression problem again.
+
+```{r}
+rdata <- fread("regprob.csv", header=T)
+```
+
+But this time we will only select the genes that conserved (difference in
+normalized log expression smaller than one).
+
+```{r}
+good <- join[(tcga_rnaseq*norm_slope + norm_int - nci60_huex)^2 < 1 &
+    (tcga_huex + norm_int - join$nci60_huex)^2 < 1, ensgene]
+rates <- rdata$rates
+rdata[, "rates" := NULL]
+rdata <- as.matrix(rdata)[, good]
+dim(rdata)
+```
+
+We will now test a total of 4 different generalized linear models.
+
+## Tested models {.tabset .tabset-fade .tabset-pills}
+
+We will use the LASSO generalized linear models from the `glmnet` package.
+We will also initialize two data frames that will contain all the predictions
+and goodnes-of-fit metrics. Those will be calculated for each of the models
+on the training set and leave-one-out cross validation.
+
+```{r}
+library(glmnet)
+
+pred <- data.frame()
+m <- data.frame()
+```
+
+---
+
+### First order model
+
+In the first model gene expression values enter as linear variables into the
+model. We will extract the predictions on the training set as well as
+predictions from leave-one-out cross validation.
+
+```{r}
+mod1 <- cv.glmnet(rdata, rates, nfolds=length(rates), keep=T, parallel=T,
+    grouped=FALSE, standardize=FALSE)
+pred_train <- predict(mod1, rdata, s="lambda.min")[,1]
+pred_test <- mod1$fit.preval[, which.min(mod1$cvm)]
+```
+
+We now append the predicted rates and performance measures to our data frames.
+
+```{r}
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="1st"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="validation", order="1st"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="1st"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order="1st"))
+```
+
+### Second order model
+
+In the second order model we will only consider interactions between gene expression values,
+meaning products between two gene expression values. Because of the large number of
+candidate genes it would be feasible to test all combinations. Instead we will
+only consider interactions between those genes that non-zero coefficients in the
+first order model.
+
+```{r}
+nonzero <- abs(coef(mod1, s="lambda.min")[-1]) > 0
+data2 <- inter(rdata[,nonzero])
+mod2 <- cv.glmnet(data2, rates, nfolds=10, keep=T, parallel=T,
+    grouped=FALSE, standardize=FALSE)
+pred_train <- predict(mod2, data2, s="lambda.min")[,1]
+pred_test <- mod2$fit.preval[, which.min(mod2$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="2nd"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="validation", order="2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order="2nd"))
+```
+
+### First and second order model
+
+In this model we will use the same interaction terms as before but also add all
+the original gene expression values in order to see whether the model can be improved.
+
+```{r}
+data12 <- cbind(rdata[, nonzero], data2)
+mod3 <- cv.glmnet(data12, rates, nfolds=length(rates), keep=T, parallel=T,
+    grouped=FALSE, standardize=FALSE)
+pred_train <- predict(mod3, data12, s="lambda.min")[,1]
+pred_test <- mod3$fit.preval[, which.min(mod3$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="1st and 2nd"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="validation", order="1st and 2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="1st and 2nd"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order="1st and 2nd"))
+print(m)
+```
+
+As we can see, adding the first order terms does not improve the second order
+model.
+
+### Regularized model by cutoff
+
+Finally, we will try to improve the generalization of the model, by removing those
+interactions that have only very influences on the model and may thus be related
+to overfitting.
+
+```{r}
+cat("Reducing model by cutoff\n")
+cf <- as.numeric(coef(mod2, s="lambda.min"))[-1]
+names(cf) <- rownames(coef(mod2))[-1]
+nonzero <- abs(cf) > 1e-5
+data_red <- data2[, nonzero]
+mod <- cv.glmnet(data_red, rates, nfolds=length(rates), keep=T,
+    grouped=FALSE, standardize=FALSE)
+pred_train <- predict(mod, data_red, s="lambda.min")[,1]
+pred_test <- mod$fit.preval[, which.min(mod$cvm)]
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_train, set="train", order="2nd + cutoff"))
+pred <- rbind(pred, data.frame(truth=rates, pred=pred_test, set="validation", order="2nd + cutoff"))
+m <- rbind(m, data.frame(t(measures(rates, pred_train)), set="train", order="2nd + cutoff"))
+m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order="2nd + cutoff"))
+print(sum(nonzero))
+```
+
+## Model selection
+
+If we compare the goodness-of-fit measures we can see that the cutoff model
+shows good good performance with an error of about 6% in predicting proliferation
+rates.
+
+```{r, results="asis", echo=FALSE}
+knitr::kable(m, caption = "goodnes-of-fit measures")
+```
+
+This can also be observed visually by plotting the real proliferation rates
+against the predicted ones (a perfect match would create a 1:1 line).
+
+```{r, fig.width=10, fig.heigh=5}
+ggplot(pred, aes(x=truth, y=pred, col=order)) + geom_abline() +
+    geom_point() + facet_grid(set ~ order) + theme_bw() +
+    xlab("measured proliferation rate [1/h]") +
+    ylab("predicted proliferation rate [1/h]") +
+    theme(legend.position="none")
+```
+
+## Prediction of proliferation rates
