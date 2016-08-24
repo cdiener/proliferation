@@ -21,6 +21,7 @@ vignettes/*.pdf
 # Seq data and models
 GSE*
 TCGA
+GDC
 models
 
 # Rdata file

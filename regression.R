@@ -9,18 +9,18 @@ library(doParallel)
 library(foreach)
 library(glmnet)
 library(ggplot2)
-library(tcgar)
 library(prtools)
+devtools::load_all("~/code/tcgar")
 
 start_t <- proc.time()
 registerDoParallel(cl=6)
 
 cat("Reading data\n")
 rdata <- fread("regprob.csv", header=T)
-load("norm_factor.rda")
-load("join.rda")
-good <- join[(tcga_rnaseq*norm + norm_int - nci60_huex)^2 < 1 &
-    (tcga_huex + norm_int - join$nci60_huex)^2 < 1, ensgene]
+norm <- readRDS("norm_factor.rds")
+join <- readRDS("join.rds")
+good <- join[(tcga_rnaseq*norm[1] + norm[2] - nci60_huex)^2 < 1 &
+    (tcga_huex + norm[2] - join$nci60_huex)^2 < 1, ensgene]
 #names(rdata)[-ncol(rdata)] <- paste0("hsa_", names(rdata)[-ncol(rdata)])
 rates <- rdata$rates
 rdata[, "rates" := NULL]
@@ -93,39 +93,35 @@ pred_plot <- ggplot(pred, aes(x=truth, y=pred, col=order)) + geom_abline() +
 ggsave("images/model.png", pred_plot, width=185, height=90, units="mm", dpi=300)
 
 cat("Predicting...\n")
-load("tcga.rda")
-hdt <- unique(data.table(huex_bm), by="ensgene")
+tcga <- readRDS("tcga.rds")
+hdt <- unique(data.table(genemap), by="ensgene")
 setkey(hdt, ensgene)
 
 symbs <- cbind(hdt[genes[,1], symbol], hdt[genes[,2], symbol])
-huex_ex <- tcga$HuEx$assay + norm_int
-huex_red <- t(huex_ex[symbs[,1], ]*huex_ex[symbs[,2], ])
+huex_ex <- tcga$huex$assay + norm[2]
+huex_red <- t(huex_ex[symbs[,1], ] * huex_ex[symbs[,2], ])
 colnames(huex_red) <- paste0(symbs[,1], "x", symbs[,2])
 rates_huex <- predict(mod, huex_red, s="lambda.min")[,1]
 controls <- is.na(names(rates_huex))
 rates_huex <- rates_huex[!controls]
 
-rdt <- unique(data.table(rnaseq_bm), by="ensgene")
-setkey(rdt, ensgene)
-
-entrez <- cbind(rdt[genes[,1], entrez], rdt[genes[,2], entrez])
-rna_ex <- log(tcga$RNASeqV2$counts+1, 2)
-rna_ex <- rna_ex * norm + norm_int
-rna_red <- t(rna_ex[entrez[,1], ]*rna_ex[entrez[,2], ])
-colnames(rna_red) <- paste0(entrez[,1], "x", entrez[,2])
+rna_ex <- log(tcga$rnaseq$counts+1, 2)
+rna_ex <- rna_ex * norm[1] + norm[2]
+rna_red <- t(rna_ex[genes[,1], ] * rna_ex[genes[,2], ])
+colnames(rna_red) <- paste0(genes[,1], "x", genes[,2])
 rates_rna <- predict(mod, rna_red, s="lambda.min")[,1]
-tum <- tcga$RNASeqV2$samples$tumor
+tum <- tcga$rnaseq$samples$tumor
 
-pred <- data.table(barcode=c(names(rates_rna), names(rates_huex)),
+pred <- data.table(
+    patient_barcode=c(tcga$rnaseq$samples$patient_barcode, tcga$huex$samples$patient_barcode[!controls]),
+    panel=c(tcga$rnaseq$samples$panel, tcga$huex$samples$panel[!controls]),
     rates=c(rates_rna, rates_huex),
-    panel=c(tcga$RNASeqV2$samples$panel, tcga$HuEx$samples$panel[!controls]),
-    tumor=c(tcga$RNASeqV2$samples$tumor, tcga$HuEx$samples$tumor[!controls]))
-#pred <- unique(pred, by="barcode")
+    tumor=c(tcga$rnaseq$samples$tumor, tcga$huex$samples$tumor[!controls])
+    )
 
-comb <- merge(pred, tcga$clinical$samples, by=c("barcode", "tumor", "panel"))
-comb <- merge(comb, tcga$clinical$patient, by=c("patient_uuid", "patient_barcode"))
+comb <- merge(pred, tcga$clinical, by=c("patient_barcode", "panel"))
 
-save(pred, comb, file="combined.rda")
+saveRDS(comb, "combined.rds")
 readr::write_csv(pred, "pred_rates.csv")
 
 write("----------\nUsed time:\n----------", file = "")

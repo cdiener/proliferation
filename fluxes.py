@@ -99,10 +99,12 @@ def minimize_total_flux(solver, lp, obj_id, vbm, model, **solver_args):
     """Calculate minimum total flux.
 
     Obtains the minimum total flux min(sum_i |v_i|) for a given objective value.
+    This function allows the solver and LP to be recycled in order to speed
+    up consecutive runs.
 
     Args:
         solver: The solver instance to recycle.
-        lp: The LP problem to modify ine each run.
+        lp: The LP problem to modify ne each run.
         obj_id: The index of the objective reaction.
         vbm: The upper flux bound.
         model: The model on which to run.
@@ -174,7 +176,7 @@ if __name__ == "__main__":
             rate = data["rates"].iloc[i]
             if rate <= 0: continue
             f = minimize_total_flux(solver, lp, oid, rate, model)
-            samples.append(data["barcode"].iloc[i])
+            samples.append(data["patient_barcode"].iloc[i])
             fluxes.append(f)
 
     print("\nNeeded {:.2f} s.".format(timer() - start))

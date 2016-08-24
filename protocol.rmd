@@ -531,7 +531,7 @@ print(sum(nonzero))
 ## Model selection
 
 If we compare the goodness-of-fit measures we can see that the cutoff model
-shows good good performance with an error of about 6% in predicting proliferation
+shows good good performance with an error of about 3.5% in predicting proliferation
 rates.
 
 ```{r, results="asis", echo=FALSE}

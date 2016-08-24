@@ -4,34 +4,36 @@
 #
 #  MIT license. See LICENSE for more information.
 
-library(prtools)
 library(ggplot2)
+library(data.table)
+library(ggplot2)
+devtools::load_all("~/code/tcgar")
+library(prtools)
 
 # Read TCGA data
-
-folders <- dir("TCGA", pattern="[A-Z]{2,4}$", include.dirs=T)
-folders <- file.path("TCGA", folders)
-
 if (!file.exists("tcga.rds")) {
-    tcga <- tcgar::read_bulk(folders)
-    gc()
-    saveRDS(tcga, file="tcga.rds")
+    tcga <- list(
+        rnaseq = read_rnaseq("GDC/manifest_tcga_rnaseq.tsv", "GDC/rnaseq"),
+        huex = read_huex("GDC/manifest_tcga_huex.tsv", "GDC/huex"),
+        clinical = read_clinical("GDC/manifest_tcga_clinical.tsv", "GDC/clinical")
+    )
+    saveRDS(tcga, "tcga.rds")
 } else tcga <- readRDS("tcga.rds")
 
-all_rnaseq <- log(rowMeans(tcga$RNASeqV2$counts)+1, 2)
-all_rnaseq <- data.table(entrez=tcga$RNASeqV2$features$entrez,
+all_rnaseq <- log(rowMeans(tcga$rnaseq$counts)+1, 2)
+all_rnaseq <- data.table(ensgene=tcga$rnaseq$features$ensgene,
     tcga_rnaseq=all_rnaseq)
-all_huex <- data.table(symbol=tcga$HuEx$features$symbol,
-    tcga_huex=rowMeans(tcga$HuEx$assay))
+all_huex <- data.table(symbol=tcga$huex$features$symbol,
+    tcga_huex=rowMeans(tcga$huex$assay))
 
 nci60 <- fread("regprob.csv", header=T)
 rates <- nci60$rates
 nci60[, rates := NULL]
 all_nci60 <- data.table(ensgene=colnames(nci60), nci60_huex=colMeans(nci60))
 
-join <- merge(as.data.table(rnaseq_bm), all_nci60, by="ensgene")
+join <- merge(as.data.table(genemap), all_nci60, by="ensgene")
 join <- merge(join, all_huex, by="symbol")
-join <- merge(join, all_rnaseq, by="entrez")
+join <- merge(join, all_rnaseq, by="ensgene")
 dupes <- join$ensgene[duplicated(join$ensgene)]
 join <- join[!(join$ensgene %in% dupes), ]
 

@@ -10,9 +10,9 @@ library(survival)
 library(pheatmap)
 library(prtools)
 
-load("combined.rda")
+comb <- readRDS("combined.rds")
+pred <- fread("pred_rates.csv")
 
-stage_map <- c("0"="0", "I"="1", "II"="2", "III"="3", "IV"="4")
 days_per_year <- 365.25
 
 # Panel plot
@@ -26,7 +26,8 @@ panel_plot <- ggplot(pred, aes(x=panel, y=rates, color=tumor, shape=tumor)) +
     xlab("") + ylab("proliferation rate [1/h]") +
     scale_colour_manual(values=c("royalblue", "red3"))
 
-ggsave("images/fig3.png", panel_plot, width=180, height=70, units="mm", scale=1.2,  dpi=300)
+ggsave("images/fig3.png", panel_plot, width=180, height=70, units="mm", scale=1.2, dpi=300)
+pred[, panel := as.character(panel)]
 
 # Normal vs tumor test
 wil <- wilcox.test(pred[!(tumor), rates], pred[(tumor), rates], conf.int=TRUE)
@@ -60,15 +61,15 @@ coxm <- coxph(Surv(delta, status) ~ comb$rates)
 #load("combined.rda")
 #comb = comb[(tumor)]
 # Clean up the panels
-comb[, T := substr(T,2,2)]
-comb[, N := substr(N,2,2)]
-comb[, M := substr(M,2,2)]
-comb[, stage := stage_map[gsub("Stage\\s+|[A-C][0-9]*", "", stage)]]
+comb[, T := gsub("[a-e][0-9]*$", "", T)]
+comb[, N := gsub("[^0-4NX]", "", N)]
+comb[, M := gsub("[^0-4MX]", "", M)]
+comb[stage %in% c("I/II NOS", "IS"), stage := NA]
+comb[, stage := gsub("[A-C]*$", "", stage)]
 
 T_plot <- ggplot(comb, aes(x=T, y=rates)) + geom_boxplot(outlier.colour=NA) +
-    geom_jitter(alpha=0.25, height=0, width=0.5, col="black", stroke=0) +
-    ylim(-0.005, 0.03) + theme_bw() + ylab("proliferation rate [1/h]") +
-    xlab("primary tumor [T stage]")
+    geom_jitter(alpha=0.05, height=0, width=0.5, col="black", stroke=0) +
+    ylim(-0.005, 0.03) + theme_bw() + ylab("proliferation rate [1/h]")
 ggsave("images/T.svg", width=120, height=100, units="mm")
 
 x <- melt(comb[, .(rates, N, M, stage)], id.vars="rates")
@@ -80,7 +81,7 @@ stage_plot <- ggplot(x, aes(x=value, y=rates, col=variable)) +
 ggsave("images/stage.png", width=180, height=70, units="mm", scale=1.2, dpi=300)
 
 panels <- pred$panel
-names(panels) <- pred$barcode
+names(panels) <- pred$patient_barcode
 panels <- sort(panels)
 
 fluxes <- fread("fluxes.csv")
@@ -88,7 +89,6 @@ barcodes <- fluxes$V1
 fluxes <- as.matrix(fluxes[, V1 := NULL])
 rownames(fluxes) <- barcodes
 info <- fread("flux_info.csv")
-
 
 lfcs <- tissue_lfc(fluxes, panels, info[, list(subsystem)])
 lfcs <- lfcs[order(-abs(lfc))]
