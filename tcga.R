@@ -11,14 +11,12 @@ devtools::load_all("~/code/tcgar")
 library(prtools)
 
 # Read TCGA data
-if (!file.exists("tcga.rds")) {
-    tcga <- list(
-        rnaseq = read_rnaseq("GDC/manifest_tcga_rnaseq.tsv", "GDC/rnaseq"),
-        huex = read_huex("GDC/manifest_tcga_huex.tsv", "GDC/huex"),
-        clinical = read_clinical("GDC/manifest_tcga_clinical.tsv", "GDC/clinical")
-    )
-    saveRDS(tcga, "tcga.rds")
-} else tcga <- readRDS("tcga.rds")
+tcga <- list(
+    rnaseq = read_rnaseq("GDC/manifest_tcga_rnaseq.tsv", "GDC/rnaseq"),
+    huex = read_huex("GDC/manifest_tcga_huex.tsv", "GDC/huex"),
+    clinical = read_clinical("GDC/manifest_tcga_clinical.tsv", "GDC/clinical")
+)
+saveRDS(tcga, "tcga.rds")
 
 all_rnaseq <- log(rowMeans(tcga$rnaseq$counts)+1, 2)
 all_rnaseq <- data.table(ensgene=tcga$rnaseq$features$ensgene,

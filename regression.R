@@ -19,8 +19,9 @@ cat("Reading data\n")
 rdata <- fread("regprob.csv", header=T)
 norm <- readRDS("norm_factor.rds")
 join <- readRDS("join.rds")
-good <- join[(tcga_rnaseq*norm[1] + norm[2] - nci60_huex)^2 < 1 &
-    (tcga_huex + norm[2] - join$nci60_huex)^2 < 1, ensgene]
+cutoff <- 1
+good <- join[(tcga_rnaseq*norm[1] + norm[2] - nci60_huex)^2 < cutoff &
+    (tcga_huex + norm[2] - join$nci60_huex)^2 < cutoff, ensgene]
 #names(rdata)[-ncol(rdata)] <- paste0("hsa_", names(rdata)[-ncol(rdata)])
 rates <- rdata$rates
 rdata[, "rates" := NULL]
@@ -68,9 +69,9 @@ m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order=
 cat("Reducing model by cutoff\n")
 cf <- as.numeric(coef(mod2, s="lambda.min"))[-1]
 names(cf) <- rownames(coef(mod2))[-1]
-nonzero <- abs(cf) > 1e-5
+nonzero <- abs(cf) > quantile(abs(cf[abs(cf) > 0]), 1/3)
 data_red <- data2[, nonzero]
-mod <- cv.glmnet(data_red, rates, nfolds=length(rates), keep=T,
+mod <- cv.glmnet(data_red, rates, nfolds=10, keep=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod, data_red, s="lambda.min")[,1]
 pred_test <- mod$fit.preval[, which.min(mod$cvm)]

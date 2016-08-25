@@ -21,7 +21,7 @@ setkey(pred, panel)
 pred <- pred[means[order(val), panel]]
 pred[, panel := factor(panel, levels=unique(panel))]
 panel_plot <- ggplot(pred, aes(x=panel, y=rates, color=tumor, shape=tumor)) +
-    geom_jitter(alpha=0.4, width=0.8, height=0, size=1) + theme_bw() + theme(axis.text.x =
+    geom_jitter(alpha=0.2, width=0.8, height=0, size=1) + theme_bw() + theme(axis.text.x =
     element_text(angle = 45, vjust = 1, hjust=1), legend.position="none") +
     xlab("") + ylab("proliferation rate [1/h]") +
     scale_colour_manual(values=c("royalblue", "red3"))
@@ -58,8 +58,6 @@ dev.off()
 
 coxm <- coxph(Surv(delta, status) ~ comb$rates)
 
-#load("combined.rda")
-#comb = comb[(tumor)]
 # Clean up the panels
 comb[, T := gsub("[a-e][0-9]*$", "", T)]
 comb[, N := gsub("[^0-4NX]", "", N)]
@@ -67,18 +65,19 @@ comb[, M := gsub("[^0-4MX]", "", M)]
 comb[stage %in% c("I/II NOS", "IS"), stage := NA]
 comb[, stage := gsub("[A-C]*$", "", stage)]
 
-T_plot <- ggplot(comb, aes(x=T, y=rates)) + geom_boxplot(outlier.colour=NA) +
-    geom_jitter(alpha=0.05, height=0, width=0.5, col="black", stroke=0) +
-    ylim(-0.005, 0.03) + theme_bw() + ylab("proliferation rate [1/h]")
-ggsave("images/T.svg", width=120, height=100, units="mm")
-
-x <- melt(comb[, .(rates, N, M, stage)], id.vars="rates")
-stage_plot <- ggplot(x, aes(x=value, y=rates, col=variable)) +
-    geom_boxplot(outlier.colour=NA) +
-    geom_jitter(alpha=0.5, height=0, width=0.5) + ylim(-0.005, 0.04) +
+x <- melt(comb[, .(rates, panel, T, N, M, stage)], id.vars=c("rates", "panel"))
+med_iqr <- function(x) median_hilow(x, conf.int=0.75)
+stage_plot <- ggplot(x, aes(x=value, y=rates, col=variable)) + geom_violin() +
+    stat_summary(geom="pointrange", fatten=2, fun.data=med_iqr) +
     facet_wrap(~ variable, scales="free_x", nrow=1) + theme_bw() +
-    theme(legend.position="none") + ylab("proliferation rate [1/h]")
-ggsave("images/stage.png", width=180, height=70, units="mm", scale=1.2, dpi=300)
+    theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    hjust=1), legend.position="none", strip.text = element_blank()) +
+    ylab("proliferation rate [1/h]") + xlab("")
+ggsave("images/stage.png", width=180, height=60, units="mm", scale=1.2, dpi=300)
+
+# Get statistics
+kw_tests <- x[, kruskal.test(rates, factor(value)), by=variable]
+print(kw_tests)
 
 panels <- pred$panel
 names(panels) <- pred$patient_barcode
@@ -103,9 +102,9 @@ cols <- viridis::viridis(256)
 annrow <- as.data.frame(panels[!duplicated(names(panels))])
 names(annrow) <- "panel"
 s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
-pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, cellwidth=0.4, cellheight=0.07,
-    show_colnames=F, annotation_row=annrow, cluster_rows=F, border_color=NA,
-    file="images/fluxes.png", width=8, height=4.5)
+#pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, cellwidth=0.4, cellheight=0.07,
+#    show_colnames=F, annotation_row=annrow, cluster_rows=F, border_color=NA,
+#    file="images/fluxes.png", width=8, height=4.5)
 
 lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
     geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.25) +
