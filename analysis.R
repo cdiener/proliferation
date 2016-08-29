@@ -66,7 +66,7 @@ comb[stage %in% c("I/II NOS", "IS"), stage := NA]
 comb[, stage := gsub("[A-C]*$", "", stage)]
 
 x <- melt(comb[, .(rates, panel, T, N, M, stage)], id.vars=c("rates", "panel"))
-med_iqr <- function(x) median_hilow(x, conf.int=0.75)
+med_iqr <- function(x) median_hilow(x, conf.int=0.5)
 stage_plot <- ggplot(x, aes(x=value, y=rates, col=variable)) + geom_violin() +
     stat_summary(geom="pointrange", fatten=2, fun.data=med_iqr) +
     facet_wrap(~ variable, scales="free_x", nrow=1) + theme_bw() +
@@ -77,6 +77,7 @@ ggsave("images/stage.png", width=180, height=60, units="mm", scale=1.2, dpi=300)
 
 # Get statistics
 kw_tests <- x[, kruskal.test(rates, factor(value)), by=variable]
+cat("\nTNM association:\n----------------\n")
 print(kw_tests)
 
 panels <- pred$panel
@@ -99,17 +100,26 @@ enr <- enr[order(nes)]
 enr[, subsystem := factor(subsystem, levels=subsystem)]
 
 cols <- viridis::viridis(256)
-annrow <- as.data.frame(panels[!duplicated(names(panels))])
-names(annrow) <- "panel"
-s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
-#pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, cellwidth=0.4, cellheight=0.07,
-#    show_colnames=F, annotation_row=annrow, cluster_rows=F, border_color=NA,
-#    file="images/fluxes.png", width=8, height=4.5)
+panels <- panels[!duplicated(names(panels))]
+fluxes <- fluxes[order(panels[rownames(fluxes)], decreasing=TRUE), ]
+in_fluxes <- names(panels) %in% rownames(fluxes)
+annrow <- data.frame(panel=panels[in_fluxes], row.names=names(panels)[in_fluxes])
+anncolors <- scales::hue_pal()(9)
+names(anncolors) <- levels(annrow$panel)
+anncolors <- list(panel=anncolors)
 
+s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
+pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, cellwidth=0.5,
+    cellheight=0.08, show_colnames=F, annotation_row=annrow,
+    annotation_colors=anncolors, cluster_rows=FALSE, border_color=NA,
+    file="images/fluxes.png", width=10, height=6)
+
+lfcs[, panel := factor(panel)]
 lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
     geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.25) +
     theme_bw() + theme(axis.text.x=element_text(angle = 45, vjust = 1, hjust=1),
-    legend.position="none") + ylab("specificity score")
+    legend.position="none") + scale_color_discrete() +
+    ylab("specificity score")
 
 enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
     geom_vline(xintercept=1, linetype="dashed") +
@@ -119,4 +129,4 @@ enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
 
 ggsave("images/lfcs.png", lfc_plot, width=120, height=100, units="mm")
 ggsave("images/ssea_over.pdf", enr_plot %+% enr[nes > 1], width=90, height=120, units="mm", dpi=300, scale=1.3)
-ggsave("images/ssea_under.pdf", enr_plot %+% enr[nes <= 1], width=90, height=70, units="mm", dpi=300, scale=1.3)
+ggsave("images/ssea_under.pdf", enr_plot %+% enr[nes <= 1], width=90, height=70, units="mm", dpi=300, scale=1.5)

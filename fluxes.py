@@ -11,6 +11,7 @@ from cobra.manipulation.modify import convert_to_irreversible
 from cobra.io import read_sbml_model, load_matlab_model
 from cobra import Reaction
 from urllib.request import urlopen
+from math import ceil
 import zipfile
 import gzip
 import os
@@ -171,7 +172,7 @@ if __name__ == "__main__":
         for i in range(data.shape[0]):
             if co % (n//100) == 0:
                 print("                             \r", end="")
-                print("Calculated {}% of fluxes...".format(co//(n//100)), end="")
+                print("Calculated {}% of fluxes...".format(ceil(100*co/n)), end="")
             co += 1
             rate = data["rates"].iloc[i]
             if rate <= 0: continue
