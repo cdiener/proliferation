@@ -99,14 +99,16 @@ hdt <- unique(data.table(genemap), by="ensgene")
 setkey(hdt, ensgene)
 
 symbs <- cbind(hdt[genes[,1], symbol], hdt[genes[,2], symbol])
-huex_ex <- tcga$huex$assay + norm[2]
+huex_ex <- tcga$huex$assay[unique(as.vector(symbs)), ]
+huex_ex <- huex_ex + norm[2]
 huex_red <- t(huex_ex[symbs[,1], ] * huex_ex[symbs[,2], ])
 colnames(huex_red) <- paste0(symbs[,1], "x", symbs[,2])
 rates_huex <- predict(mod, huex_red, s="lambda.min")[,1]
 controls <- is.na(names(rates_huex))
 rates_huex <- rates_huex[!controls]
 
-rna_ex <- log(tcga$rnaseq$counts+1, 2)
+rna_ex <- tcga$rnaseq$counts[unique(as.vector(genes)), ]
+rna_ex <- log(rna_ex+1, 2)
 rna_ex <- rna_ex * norm[1] + norm[2]
 rna_red <- t(rna_ex[genes[,1], ] * rna_ex[genes[,2], ])
 colnames(rna_red) <- paste0(genes[,1], "x", genes[,2])
