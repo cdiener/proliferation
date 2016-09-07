@@ -55,6 +55,13 @@ After that you can install `prtools` simply via
 devtools::install_github("cdiener/proliferation/prtools")
 ```
 
+Loading the prtools package will then also load all additional packages
+we will use:
+
+```{r}
+library(prtools)
+```
+
 If you want to download the raw analysis data you will also need the GDC
 data transfer tool. Installation instructions can be [found here](https://gdc.cancer.gov/access-data/gdc-data-transfer-tool). Please make
 sure that the `gdc-client` executable is in your path. The docker image already
@@ -114,7 +121,6 @@ subfolder with another subfolder for each data type. File manifests for the
 data used in this analysis are already provided in the `GDC` folder.
 
 ```{r, eval=FALSE}
-library(tcgar)
 get_data("GDC/manigest_tcga_rnaseq", "GDC/rnaseq")
 get_data("GDC/manigest_tcga_huex", "GDC/huex")
 get_data("GDC/manigest_tcga_clinical", "GDC/clinical")
@@ -128,9 +134,6 @@ probes on the HuEx microarrays and several Gene ID systems. This step is optiona
 since the generated `probemap.rds` file is contained in the repository as well.
 
 ```{r, eval=FALSE}
-library(biomaRt)
-library(data.table)
-
 ensembl = useMart("ensembl",dataset="hsapiens_gene_ensembl")
 attrs <- c("ensembl_gene_id", "description", "external_gene_name", "ucsc",
     "entrezgene", "affy_huex_1_0_st_v2")
@@ -152,8 +155,7 @@ while. If you have several cores available on your machine we recommend to use
 them here. To use 6 cores during computations you may use the following:
 
 ```{r}
-library(foreach)
-doParallel::registerDoParallel(cl=6)
+registerDoMC(6)
 ```
 
 Finally, we will save this raw expression set
@@ -161,12 +163,6 @@ to a serialized format, so we do not have to repeat this step every time.
 This will take about half an hour.
 
 ```{r}
-suppressPackageStartupMessages({
-    library(prtools)
-    library(oligo)
-    library(data.table)
-})
-
 if (file.exists("eset_raw.rds")) eset <- readRDS("eset_raw.rds") else {
     celfiles <- list.celfiles(recursive=T, listGzipped=T)
     raw_data <- read.celfiles(celfiles)
@@ -177,7 +173,7 @@ if (file.exists("eset_raw.rds")) eset <- readRDS("eset_raw.rds") else {
 ```
 
 The expression values we obtain this way are on the level of "probe sets",
-sets of spots on the microarray. However, in order to obatin expression values
+sets of spots on the microarray. However, in order to obtain expression values
 per gene we have to summarize those probe set expression values. For this we can
 use `probemap.rds` mapping that we obtained earlier. First, we will prepare the
 probe map to give us unique mappings between genes and probe sets. We will only
@@ -223,7 +219,7 @@ head(gcs)
 
 Now, we will reduce the individual repetitions for each cell line to its mean
 log expression values and relate the cell lines in the microarray samples
-to the ones in the gowth rate data set.
+to the ones in the growth rate data set.
 
 ```{r}
 setkey(gcs, cell_line)
@@ -265,7 +261,7 @@ does this efficiently. We will store the results in a list with one sublist
 for each technology (this will take around 20 minutes depending on your
 server).
 
-```{r}
+```{r, eval=FALSE}
 library(tcgar)
 tcga <- list(
     rnaseq = read_rnaseq("GDC/manifest_tcga_rnaseq.tsv", "GDC/rnaseq", progress=F),
@@ -276,8 +272,15 @@ tcga <- list(
 
 Again, we will save the output in a serialized file.
 
-```{r}
+```{r, eval=FALSE}
 saveRDS(tcga, "tcga.rds")
+```
+
+If you downloaded the preprocessed data you can skip the previous steps and
+read it directly using:
+
+```{r}
+tcga <- readRDS("tcga.rds")
 ```
 
 ## Comparison to NCI-60 cell line data
@@ -358,8 +361,6 @@ As we can see, using this correction both HuEx data sets relate well with
 each other.
 
 ```{r}
-library(ggplot2)
-
 ggplot(join, aes(x=tcga_huex, y=nci60_huex)) + geom_point(alpha=0.1, stroke=0) +
     geom_abline(intercept=norm_int, size=3/4, col="dodgerblue") +
     geom_abline(intercept=sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
@@ -400,8 +401,10 @@ norm <- c(norm, norm_int)
 saveRDS(norm, "norm_factor.rds")
 ggplot(join, aes(x=tcga_rnaseq, y=nci60_huex)) + geom_point(alpha=0.1, stroke=0) +
     geom_abline(slope=norm, intercept=norm_int, size=3/4, col="dodgerblue") +
-    geom_abline(slope=norm, intercept=sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
-    geom_abline(slope=norm, intercept=-sqrt(2)+norm_int, size=3/4, col="dodgerblue", linetype="dashed") +
+    geom_abline(slope=norm, intercept=sqrt(2)+norm_int, size=3/4,
+    col="dodgerblue", linetype="dashed") +
+    geom_abline(slope=norm, intercept=-sqrt(2)+norm_int, size=3/4,
+    col="dodgerblue", linetype="dashed") +
     xlab("TCGA RNA-seq") + ylab("NCI60 HuEx") + theme_bw()
 
 measures(join$nci60_huex, norm[1] * join$tcga_rnaseq + norm[2])
@@ -414,6 +417,7 @@ genes in the further analysis that do not differ by a log fold change more than 
 between the two normalized data sets (area enclosed by dashed blue lines).
 
 ---
+
 # Regression and prediction
 
 We now have a way of normalizing the gene expression data between TCGA and NCI-60
@@ -452,7 +456,6 @@ library(glmnet)
 pred <- data.frame()
 m <- data.frame()
 ```
-
 ---
 
 ### First order model
@@ -540,7 +543,6 @@ m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order=
 print(sum(nonzero))
 ```
 
----
 ## Model selection
 
 If we compare the goodness-of-fit measures we can see that the cutoff model

@@ -46,7 +46,6 @@ prolif[comb$rates > quantile(comb$rates, .75)] <- "high"
 prolif[comb$rates < quantile(comb$rates, .25)] <- "low"
 prolif <- factor(prolif, levels=c("low", "high"))
 
-
 surv <- Surv(delta, status)
 fit <- survfit(surv ~ prolif)
 

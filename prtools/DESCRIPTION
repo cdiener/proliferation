@@ -19,7 +19,7 @@ Imports:
     tcgar,
     survival,
     foreach,
-    doParallel,
+    doMC,
     oligo,
     glmnet
 Remotes: github::cdiener/tcgar
