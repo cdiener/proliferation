@@ -18,6 +18,7 @@
 #'  NULL
 #'
 #' @export
+#' @importFrom data.table data.table rbindlist
 tissue_lfc <- function(v, map, extra=NULL) {
     p <- map[rownames(v)]
 
@@ -26,7 +27,7 @@ tissue_lfc <- function(v, map, extra=NULL) {
     out <- lapply(unique(p), function(pname) {
         ti <- p == pname
         in_t <- colMeans(v[ti,]) + 1e-6
-        out_t <- colMeans(v[!ti,]) + 1e-6
+        out_t <- colMeans(v[!ti, ]) + 1e-6
         lfcs <- log(in_t, 2) - log(out_t, 2)
 
         res <- data.table(rid=names(in_t), panel=pname, lfc=lfcs)

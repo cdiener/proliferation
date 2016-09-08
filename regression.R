@@ -4,16 +4,10 @@
 #
 #  MIT license. See LICENSE for more information.
 
-library(data.table)
-library(doParallel)
-library(foreach)
-library(glmnet)
-library(ggplot2)
 library(prtools)
-devtools::load_all("~/code/tcgar")
 
 start_t <- proc.time()
-registerDoParallel(cl=6)
+registerDoMC(6)
 
 cat("Reading data\n")
 rdata <- fread("regprob.csv", header=T)
@@ -31,8 +25,9 @@ cat("Running 1st order regressor\n")
 
 pred <- data.frame()
 m <- data.frame()
+folds <- length(rates)
 
-mod1 <- cv.glmnet(rdata, rates, nfolds=length(rates), keep=T, parallel=T,
+mod1 <- cv.glmnet(rdata, rates, nfolds=folds, keep=T, parallel=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod1, rdata, s="lambda.min")[,1]
 pred_test <- mod1$fit.preval[, which.min(mod1$cvm)]
@@ -45,7 +40,7 @@ nonzero <- abs(coef(mod1, s="lambda.min")[-1]) > 0
 cat("Running 2nd order regressor\n")
 
 data2 <- inter(rdata[,nonzero])
-mod2 <- cv.glmnet(data2, rates, nfolds=10, keep=T, parallel=T,
+mod2 <- cv.glmnet(data2, rates, nfolds=folds, keep=T, parallel=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod2, data2, s="lambda.min")[,1]
 pred_test <- mod2$fit.preval[, which.min(mod2$cvm)]
@@ -57,7 +52,7 @@ m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order=
 cat("Running 1st + 2nd order regressor\n")
 
 data12 <- cbind(rdata[, nonzero], data2)
-mod3 <- cv.glmnet(data12, rates, nfolds=length(rates), keep=T, parallel=T,
+mod3 <- cv.glmnet(data12, rates, nfolds=folds, keep=T, parallel=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod3, data12, s="lambda.min")[,1]
 pred_test <- mod3$fit.preval[, which.min(mod3$cvm)]
@@ -69,9 +64,9 @@ m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order=
 cat("Reducing model by cutoff\n")
 cf <- as.numeric(coef(mod2, s="lambda.min"))[-1]
 names(cf) <- rownames(coef(mod2))[-1]
-nonzero <- abs(cf) > quantile(abs(cf[abs(cf) > 0]), 1/3)
+nonzero <- abs(cf) > quantile(abs(cf[abs(cf) > 0]), 0.25)
 data_red <- data2[, nonzero]
-mod <- cv.glmnet(data_red, rates, nfolds=10, keep=T,
+mod <- cv.glmnet(data_red, rates, nfolds=folds, keep=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod, data_red, s="lambda.min")[,1]
 pred_test <- mod$fit.preval[, which.min(mod$cvm)]
@@ -82,8 +77,7 @@ m <- rbind(m, data.frame(t(measures(rates, pred_test)), set="validation", order=
 
 genes <- do.call(rbind, strsplit(colnames(data_red), "x"))
 colnames(genes) <- c("gene1", "gene2")
-readr::write_csv(data.frame(genes, coef=cf[nonzero]), "best_interactions.csv")
-save(mod, file="glmnet_model.rda")
+write.csv(data.frame(genes, coef=cf[nonzero]), "best_interactions.csv")
 
 #Assemble predictions
 pred_plot <- ggplot(pred, aes(x=truth, y=pred, col=order)) + geom_abline() +
@@ -95,8 +89,8 @@ ggsave("images/model.png", pred_plot, width=185, height=90, units="mm", dpi=300)
 
 cat("Predicting...\n")
 tcga <- readRDS("tcga.rds")
-hdt <- unique(data.table(genemap), by="ensgene")
-setkey(hdt, ensgene)
+map <- genemap
+setkey(map, ensgene)
 
 symbs <- cbind(hdt[genes[,1], symbol], hdt[genes[,2], symbol])
 huex_ex <- tcga$huex$assay[unique(as.vector(symbs)), ]
@@ -113,7 +107,6 @@ rna_ex <- rna_ex * norm[1] + norm[2]
 rna_red <- t(rna_ex[genes[,1], ] * rna_ex[genes[,2], ])
 colnames(rna_red) <- paste0(genes[,1], "x", genes[,2])
 rates_rna <- predict(mod, rna_red, s="lambda.min")[,1]
-tum <- tcga$rnaseq$samples$tumor
 
 pred <- data.table(
     patient_barcode=c(tcga$rnaseq$samples$patient_barcode, tcga$huex$samples$patient_barcode[!controls]),

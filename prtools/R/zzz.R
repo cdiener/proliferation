@@ -3,10 +3,11 @@
 ## MIT license. See LICENSE for more information.
 
 #' @import RcppProgress
+#' @importFrom utils packageVersion
 NULL
 
 pkgs <- c("data.table", "oligo", "foreach", "doMC", "survival", "tcgar",
-    "glmnet", "biomaRt", "ggplot2")
+    "glmnet", "biomaRt", "ggplot2", "pheatmap")
 
 silent_lib <- function(...) suppressPackageStartupMessages(library(...))
 

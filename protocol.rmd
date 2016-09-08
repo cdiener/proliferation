@@ -7,6 +7,7 @@ output:
         toc_float: true
         theme: paper
     pdf_document:
+        latex_engine: lualatex
         toc: true
         number_sections: true
 ---
@@ -455,6 +456,9 @@ library(glmnet)
 
 pred <- data.frame()
 m <- data.frame()
+
+# For leave-one-out cross validation
+folds <- length(rates)
 ```
 ---
 
@@ -465,7 +469,7 @@ model. We will extract the predictions on the training set as well as
 predictions from leave-one-out cross validation.
 
 ```{r}
-mod1 <- cv.glmnet(rdata, rates, nfolds=length(rates), keep=T, parallel=T,
+mod1 <- cv.glmnet(rdata, rates, nfolds=folds, keep=T, parallel=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod1, rdata, s="lambda.min")[,1]
 pred_test <- mod1$fit.preval[, which.min(mod1$cvm)]
@@ -491,7 +495,7 @@ first order model.
 ```{r}
 nonzero <- abs(coef(mod1, s="lambda.min")[-1]) > 0
 data2 <- inter(rdata[,nonzero])
-mod2 <- cv.glmnet(data2, rates, nfolds=10, keep=T, parallel=T,
+mod2 <- cv.glmnet(data2, rates, nfolds=folds, keep=T, parallel=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod2, data2, s="lambda.min")[,1]
 pred_test <- mod2$fit.preval[, which.min(mod2$cvm)]
@@ -508,7 +512,7 @@ the original gene expression values in order to see whether the model can be imp
 
 ```{r}
 data12 <- cbind(rdata[, nonzero], data2)
-mod3 <- cv.glmnet(data12, rates, nfolds=length(rates), keep=T, parallel=T,
+mod3 <- cv.glmnet(data12, rates, nfolds=folds, keep=T, parallel=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod3, data12, s="lambda.min")[,1]
 pred_test <- mod3$fit.preval[, which.min(mod3$cvm)]
@@ -530,9 +534,9 @@ to overfitting.
 ```{r}
 cf <- as.numeric(coef(mod2, s="lambda.min"))[-1]
 names(cf) <- rownames(coef(mod2))[-1]
-nonzero <- abs(cf) > quantile(abs(cf[abs(cf) > 0]), 1/3)
+nonzero <- abs(cf) > quantile(abs(cf[abs(cf) > 0]), 0.25)
 data_red <- data2[, nonzero]
-mod <- cv.glmnet(data_red, rates, nfolds=10, keep=T,
+mod <- cv.glmnet(data_red, rates, nfolds=folds, keep=T,
     grouped=FALSE, standardize=FALSE)
 pred_train <- predict(mod, data_red, s="lambda.min")[,1]
 pred_test <- mod$fit.preval[, which.min(mod$cvm)]
@@ -546,7 +550,7 @@ print(sum(nonzero))
 ## Model selection
 
 If we compare the goodness-of-fit measures we can see that the cutoff model
-shows good good performance with an error of about 3.5% in predicting proliferation
+shows good good performance with an error of about 4% in predicting proliferation
 rates.
 
 ```{r, results="asis", echo=FALSE}
@@ -564,4 +568,257 @@ ggplot(pred, aes(x=truth, y=pred, col=order)) + geom_abline() +
     theme(legend.position="none")
 ```
 
+We will also save a list of the gene interactions and coefficient values
+for the final model.
+
+```{r}
+genes <- do.call(rbind, strsplit(colnames(data_red), "x"))
+colnames(genes) <- c("gene1", "gene2")
+write.csv(data.frame(genes, coef=cf[nonzero]), "best_interactions.csv")
+```
+
 ## Prediction of proliferation rates
+
+We now have our trained model and will continue predicting proliferation rates
+for the samples from TCGA.
+
+### Prediction for HuEx samples
+
+The major problem we have is that in the HuEx data genes are identified by
+symbols whereas our interaction terms are identied by ENSEMBL gene ids.
+So we will begin by creating a mapping between the two using the gene map
+from before and getting the symbols for our genes in the interaction terms.
+
+```{r}
+map <- genemap
+setkey(map, ensgene)
+symbs <- cbind(map[genes[,1], symbol], map[genes[,2], symbol])
+```
+
+With that we can get the expression values for those genes and normalize them
+with the normalization factor we obtained earlier.
+
+```{r}
+huex_ex <- tcga$huex$assay[unique(as.vector(symbs)), ]
+huex_ex <- huex_ex + norm[2]
+```
+
+We can now calculate the corresponding interaction terms and predict the
+proliferation rates for all samples. Here, we will also remove internal controls
+that do not map to any TCGA samples.
+
+```{r}
+huex_red <- t(huex_ex[symbs[,1], ] * huex_ex[symbs[,2], ])
+colnames(huex_red) <- paste0(symbs[,1], "x", symbs[,2])
+rates_huex <- predict(mod, huex_red, s="lambda.min")[,1]
+controls <- is.na(names(rates_huex))
+rates_huex <- rates_huex[!controls]
+```
+
+### Prediction for RNA-Seq samples
+
+RNA-Seq samples are identified by ENSEMBL ids as well so we can advance straight
+away to calculating the log expression values and applying the normalization.
+
+```{r}
+rna_ex <- tcga$rnaseq$counts[unique(as.vector(genes)), ]
+rna_ex <- log(rna_ex+1, 2)
+rna_ex <- rna_ex * norm[1] + norm[2]
+```
+
+With that we can calculate the interaction terms and predict the proliferation
+rates.
+
+```{r}
+rna_red <- t(rna_ex[genes[,1], ] * rna_ex[genes[,2], ])
+colnames(rna_red) <- paste0(genes[,1], "x", genes[,2])
+rates_rna <- predict(mod, rna_red, s="lambda.min")[,1]
+```
+
+### Combining the data sets
+
+Finally we will first create a prediction data set that combines all proliferation
+rate predictions together with the sample annotations.
+
+```{r}
+pred <- data.table(
+    patient_barcode=c(tcga$rnaseq$samples$patient_barcode,
+        tcga$huex$samples$patient_barcode[!controls]),
+    panel=c(tcga$rnaseq$samples$panel, tcga$huex$samples$panel[!controls]),
+    rates=c(rates_rna, rates_huex),
+    tumor=c(tcga$rnaseq$samples$tumor, tcga$huex$samples$tumor[!controls])
+    )
+```
+
+This way we can easily check what percentage of proliferation rates was predicted
+as negative...
+
+```{r}
+sum(pred$rates)/nrow(pred)
+```
+
+We can merge this data set with the clinical information for each patient now.
+
+```{r}
+comb <- merge(pred, tcga$clinical, by=c("patient_barcode", "panel"))
+print(comb)
+```
+
+Finally we will save those data sets for later usage.
+
+```{r}
+saveRDS(comb, "combined.rds")
+write.csv(pred, "pred_rates.csv")
+```
+
+# Proliferation rates and their association with clinical data
+
+## General properties
+
+Having the combined data set `comb` most of the following analyses are straight
+forward. First we can visualize the overall distribution of proliferation rates
+across the TCGA cancer panels.
+
+We will start by ordering the panels by their mean proliferation rate,
+
+```{r}
+means <- pred[, list(val=median(rates)), by=panel]
+setkey(pred, panel)
+pred <- pred[means[order(val), panel]]
+pred[, panel := factor(panel, levels=unique(panel))]
+```
+
+followed by plotting them with `ggplot2`.
+```{r, fig.width=10, fig.height=4}
+ggplot(pred, aes(x=panel, y=rates, color=tumor, shape=tumor)) +
+    geom_jitter(alpha=0.2, width=0.8, height=0, size=1) + theme_bw() + theme(axis.text.x =
+    element_text(angle = 45, vjust = 1, hjust=1), legend.position="none") +
+    xlab("") + ylab("proliferation rate [1/h]") +
+    scale_colour_manual(values=c("royalblue", "red3"))
+
+# Return panels to its original state
+pred[, panel := as.character(panel)]
+```
+
+Here red triangles denote cancer samples and blue circles samples from healthy
+tissues.
+
+We can also check how the proliferation rates from tumor and normal tissue samples
+behave.
+
+```{r, fig.width=3, fig.height=4}
+ggplot(pred, aes(x=c("normal", "tumor")[tumor+1], y=rates, fill=tumor)) +
+    geom_boxplot() + xlab("") + ylab("proliferation rate [1/h]") + theme_bw() +
+    theme(legend.position="none")
+```
+
+Here, the fold-change between tumor and normal tissue is given by
+
+```{r}
+pred[(tumor), mean(rates)] / pred[!(tumor), mean(rates)]
+```
+
+And this difference can be tested with a wilcoxon ranked-sum test.
+
+```{r}
+wilcox.test(pred[!(tumor), rates], pred[(tumor), rates], conf.int=TRUE)
+```
+
+## Survival Analysis
+
+First we will set up the times and censoring. The `comb` data set includes
+the required information in the `days_to_death`, `days_to_contact` and `vital`
+columns.
+
+```{r}
+days_per_year <- 365.25
+
+comb <- comb[!is.na(vital) & tumor]
+delta <- c(comb[vital=="Alive", days_to_contact/days_per_year],
+    comb[vital=="Dead", days_to_death/days_per_year])
+status <- comb$vital == "Dead"
+```
+
+For visualization we will stratify the survival data into two groups. One
+including the top 25% of proliferation rates and the other containing the
+bottom 25%.
+
+```{r}
+prolif <- vector(length=nrow(comb))
+prolif[comb$rates > quantile(comb$rates, .75)] <- "high"
+prolif[comb$rates < quantile(comb$rates, .25)] <- "low"
+prolif <- factor(prolif, levels=c("low", "high"))
+```
+
+We can now generate the survival fit and create the corresponding Kaplan-Meier
+plot.
+
+```{r}
+surv <- Surv(delta, status)
+fit <- survfit(surv ~ prolif)
+plot(fit, col=c("blue", "red"), xlab="time [years]", ylab="survival", lwd=2)
+```
+
+However, the proliferation rate is a continuous variable and we would like to
+evaluate its association to survival without creating artificial strata. For
+this we can use a Cox proportional hazards model.
+
+```{r}
+coxm <- coxph(surv ~ comb$rates)
+print(coxm)
+```
+
+We can use the parameter β to calculate the increase in risk when increasing the
+proliferation rate by a fixed value, for instance 0.01:
+
+```{r}
+exp(coef(coxm) * 0.01)
+```
+
+So this would mean an increased risk of about 18%.
+
+## Association with tumor stage
+
+We can also study how the tumor stage relates to the predicted proliferation
+rates. We will use the [TNM staging system here](http://www.cancer.gov/about-cancer/diagnosis-staging/staging).
+The pathological tumor stages are already contained in `comb`, however they may
+have several subtypes. So we will clean them up a bit to only leave the major
+tumor stages such as "T1", "N2", "Stage III", etc.
+
+```{r}
+comb[, T := gsub("[a-e][0-9]*$", "", T)]
+comb[, N := gsub("[^0-4NX]", "", N)]
+comb[, M := gsub("[^0-4MX]", "", M)]
+comb[stage %in% c("I/II NOS", "IS"), stage := NA]
+comb[, stage := gsub("[A-C]*$", "", stage)]
+```
+
+This enables us to visualize the proliferation rates across the TNM staging system.
+
+```{r, fig.width=10, fig.height=3}
+x <- melt(comb[, .(rates, panel, T, N, M, stage)], id.vars=c("rates", "panel"))
+ggplot(x, aes(x=value, y=rates, col=variable)) +
+    geom_violin(aes(fill=variable), scale="width", alpha=0.3, linetype=0) +
+    geom_boxplot(outlier.colour=NA, width=0.5) +
+    facet_wrap(~ variable, scales="free_x", nrow=1) + theme_bw() +
+    theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    hjust=1), legend.position="none", strip.text = element_blank()) +
+    ylab("proliferation rate [1/h]") + xlab("")
+```
+
+As we can see there is again a lot of heterogeneity going on. We can test
+for associations by the non-parametric Kruskal-Wallis test.
+
+```{r}
+kw_tests <- x[, kruskal.test(rates, factor(value)), by=variable]
+print(kw_tests)
+```
+
+# Flux predictions and metabolic liabilities
+
+$$\begin{align}
+&\min_i \sum_i v_i\\
+s.t.\quad& \mathbf{Sv} = 0\\
+& v_p = r_p\\
+& v_i \geq 0
+\end{align}$$

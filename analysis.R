@@ -4,10 +4,6 @@
 #
 #  MIT license. See LICENSE for more information.
 
-library(ggplot2)
-library(data.table)
-library(survival)
-library(pheatmap)
 library(prtools)
 
 comb <- readRDS("combined.rds")
@@ -26,7 +22,8 @@ panel_plot <- ggplot(pred, aes(x=panel, y=rates, color=tumor, shape=tumor)) +
     xlab("") + ylab("proliferation rate [1/h]") +
     scale_colour_manual(values=c("royalblue", "red3"))
 
-ggsave("images/fig3.png", panel_plot, width=180, height=70, units="mm", scale=1.2, dpi=300)
+ggsave("images/fig3.png", panel_plot, width=180, height=70, units="mm",
+    scale=1.2, dpi=300)
 pred[, panel := as.character(panel)]
 
 # Normal vs tumor test
@@ -55,7 +52,7 @@ plot(fit, col=c("blue", "red"), xlab="time [years]", ylab="survival", lwd=4)
 grid()
 dev.off()
 
-coxm <- coxph(Surv(delta, status) ~ comb$rates)
+coxm <- coxph(surv ~ comb$rates)
 
 # Clean up the panels
 comb[, T := gsub("[a-e][0-9]*$", "", T)]
@@ -65,9 +62,9 @@ comb[stage %in% c("I/II NOS", "IS"), stage := NA]
 comb[, stage := gsub("[A-C]*$", "", stage)]
 
 x <- melt(comb[, .(rates, panel, T, N, M, stage)], id.vars=c("rates", "panel"))
-med_iqr <- function(x) median_hilow(x, conf.int=0.5)
-stage_plot <- ggplot(x, aes(x=value, y=rates, col=variable)) + geom_violin() +
-    stat_summary(geom="pointrange", fatten=2, fun.data=med_iqr) +
+stage_plot <- ggplot(x, aes(x=value, y=rates, col=variable)) +
+    geom_violin(aes(fill=variable), scale="width", alpha=0.3, linetype=0) +
+    geom_boxplot(outlier.colour=NA, width=0.5) +
     facet_wrap(~ variable, scales="free_x", nrow=1) + theme_bw() +
     theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1,
     hjust=1), legend.position="none", strip.text = element_blank()) +
@@ -108,16 +105,18 @@ names(anncolors) <- levels(annrow$panel)
 anncolors <- list(panel=anncolors)
 
 s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
-pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F, cellwidth=0.5,
-    cellheight=0.08, show_colnames=F, annotation_row=annrow,
+pheatmap::pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F,
+    cellwidth=0.2, cellheight=0.05, show_colnames=F, annotation_row=annrow,
     annotation_colors=anncolors, cluster_rows=FALSE, border_color=NA,
-    file="images/fluxes.png", width=10, height=6)
+    file="images/fluxes.png", width=5, height=5, annotation_legend=F)
 
 lfcs[, panel := factor(panel)]
+lab <- function(x) lapply(x, shorten, n=20)
 lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
-    geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.25) +
+    geom_hline(yintercept=0, linetype="dashed") +
+    geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.5) +
     theme_bw() + theme(axis.text.x=element_text(angle = 45, vjust = 1, hjust=1),
-    legend.position="none") + scale_color_discrete() +
+    legend.position="none") + facet_wrap(~subsystem, labeller=lab, nrow=12, ncol=6) +
     ylab("specificity score")
 
 enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
@@ -126,6 +125,11 @@ enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
     theme_bw() + scale_y_discrete(labels=shorten) +
     theme(legend.position=c(0.8,0.2)) + xlab("enrichment score") + ylab("")
 
-ggsave("images/lfcs.png", lfc_plot, width=120, height=100, units="mm")
-ggsave("images/ssea_over.pdf", enr_plot %+% enr[nes > 1], width=90, height=120, units="mm", dpi=300, scale=1.3)
-ggsave("images/ssea_under.pdf", enr_plot %+% enr[nes <= 1], width=90, height=70, units="mm", dpi=300, scale=1.5)
+spec <- enr[, rev(subsystem)[1:3]]
+spec_plot <- (lfc_plot + theme(strip.text = element_blank())) %+% lfcs[subsystem %in% spec]
+ggsave("images/lfcs.svg", spec_plot, width=200, height=80, units="mm")
+ggsave("images/lfcs_strata.pdf", lfc_plot, width=300, height=600, units="mm")
+ggsave("images/ssea_over.pdf", enr_plot %+% enr[nes > 1], width=90, height=120,
+    units="mm", dpi=300, scale=1.3)
+ggsave("images/ssea_under.pdf", enr_plot %+% enr[nes <= 1], width=90, height=75,
+    units="mm", dpi=300, scale=1.3)

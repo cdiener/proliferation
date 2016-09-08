@@ -21,7 +21,8 @@ Imports:
     foreach,
     doMC,
     oligo,
-    glmnet
+    glmnet,
+    pheatmap
 Remotes: github::cdiener/tcgar
 RoxygenNote: 5.0.1
 Suggests: testthat, covr
