@@ -9,6 +9,7 @@ build:
             cwd: prtools
     after-steps:
         - script:
+            name: r-lint
             code: |
-                Rscript -e "library(lintr); lint_package('mbtools', linters=
+                Rscript -e "library(lintr); lint_package('prtools', linters = \
                 with_defaults(trailing_blank_lines_linter=NULL))"
