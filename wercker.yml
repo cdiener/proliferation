@@ -5,5 +5,7 @@ build:
             cwd: prtools
         - inbobmk/r-check:
             cwd: prtools
+        - inbobmk/r-lint:
+            cwd: prtools
         - inbobmk/r-coverage:
             cwd: prtools

@@ -8,7 +8,7 @@ RUN mkdir /data && chown rstudio:rstudio /data
 
 USER rstudio
 
-RUN git clone http://github.com/cdiener/proliferation /data/proliferation
+RUN git clone https://github.com/cdiener/proliferation /data/proliferation
 WORKDIR /data/proliferation
 RUN Rscript -e "source('https://bioconductor.org/biocLite.R'); \
     biocLite('BiocInstaller'); setRepositories(ind=1:2); \
