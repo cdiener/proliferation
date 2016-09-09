@@ -1,6 +1,6 @@
-## Copyright 2016 Christian Diener <mail[at]cdiener.com>
-##
-## MIT license. See LICENSE for more information.
+# Copyright 2016 Christian Diener <mail[at]cdiener.com>
+#
+# MIT license. See LICENSE for more information.
 
 #' Various measures for goodness-of-fit.
 #'
@@ -22,13 +22,13 @@
 #' @export
 measures <- function(truth, pred) {
     res <- truth - pred
-    mse <- mean(res^2)
+    mse <- mean(res ^ 2)
     rmse <- sqrt(mse)
     mae <- mean(abs(res))
-    mre <- mean(abs(res)/abs(truth))
-    rsq <- 1 - sum(res^2)/sum((truth - mean(truth))^2)
+    mre <- mean(abs(res) / abs(truth))
+    rsq <- 1 - sum(res ^ 2) / sum( (truth - mean(truth) ) ^ 2)
 
-    c(mse=mse, rmse=rmse, mae=mae, mre=mre, rsq=rsq)
+    c(mse = mse, rmse = rmse, mae = mae, mre = mre, rsq = rsq)
 }
 
 #' Calculates interaction terms for a gene expression matrix.
@@ -47,9 +47,9 @@ measures <- function(truth, pred) {
 inter <- function(M) {
     nam <- colnames(M)
     out <- NULL
-    for(i in 1:ncol(M)) {
-        newnames <- paste0(nam[i], "x", colnames(M[, i:ncol(M), drop=F]))
-        x <- M[, i]*M[, i:ncol(M), drop=F]
+    for (i in 1:ncol(M)) {
+        newnames <- paste0(nam[i], "x", colnames(M[, i:ncol(M), drop = FALSE]))
+        x <- M[, i] * M[, i:ncol(M), drop = FALSE]
         colnames(x) <- newnames
         out <- cbind(out, x)
     }

@@ -1,6 +1,6 @@
-## Copyright 2016 Christian Diener <mail[at]cdiener.com>
-##
-## MIT license. See LICENSE for more information.
+# Copyright 2016 Christian Diener <mail[at]cdiener.com>
+#
+# MIT license. See LICENSE for more information.
 
 #' @useDynLib prtools
 #' @importFrom Rcpp sourceCpp

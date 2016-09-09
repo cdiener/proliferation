@@ -7,3 +7,9 @@ build:
             cwd: prtools
         - inbobmk/r-coverage:
             cwd: prtools
+    after-steps:
+        - inbobmk/r-lint:
+            cwd: prtools
+            options: |
+                linters = with_defaults(trailing_blank_lines_linter = NULL,
+                object_usage_linter = NULL)
