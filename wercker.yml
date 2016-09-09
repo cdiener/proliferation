@@ -7,3 +7,8 @@ build:
             cwd: prtools
         - inbobmk/r-coverage:
             cwd: prtools
+    after-steps:
+        - script:
+            code: |
+                Rscript -e "library(lintr); lint_package('mbtools', linters=
+                with_defaults(trailing_blank_lines_linter=NULL))"
