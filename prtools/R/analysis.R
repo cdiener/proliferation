@@ -2,24 +2,24 @@
 ##
 ## MIT license. See LICENSE for more information.
 
-#' Calculates flux log-fold changes between in-tissue and out-tissue samples.
+#' Calculates flux log-fold changes between in-panel and out-panel samples.
 #'
-#' `tissue_lfc` takes values for fluxes across different tissues and calculates
-#' the log-fold changes between the flux in a given target tissue against all
-#' all other tissues, for all tissues.
+#' `panel_lfc` takes values for fluxes across different panels and calculates
+#' the log-fold changes between the flux in a given target panel against all
+#' all other panels, for all panels.
 #'
 #' @param v A matrix of fluxes where rows denote samples across different
-#' tissues and columns denote fluxes.
-#' @param map A map translating the row names of v to their specific tissue.
+#' panels and columns denote fluxes.
+#' @param map A map translating the row names of v to their specific panel.
 #' @param extra Optional data.frame with as many rows as rows in v that contains
 #' additional information about the fluxes that should be appended to the results.
-#' @return A data.table containing the log-fold changes for each flux and tissue.
+#' @return A data.table containing the log-fold changes for each flux and panel.
 #' @examples
 #'  NULL
 #'
 #' @export
 #' @importFrom data.table data.table rbindlist
-tissue_lfc <- function(v, map, extra=NULL) {
+panel_lfc <- function(v, map, extra=NULL) {
     p <- map[rownames(v)]
 
     out <- NULL

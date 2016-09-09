@@ -6,10 +6,10 @@ test_that("tissue lfcs can be calculated", {
     rownames(v) <- paste0("s", 1:10)
     map <- rep(1:2, each=5)
     names(map) <- rownames(v)
-    lf <- tissue_lfc(v, map)
+    lf <- panel_lfc(v, map)
     expect_equal(c(20, 3), dim(lf))
     extra <- data.frame(info=paste0("info", 1:10))
-    lf <- tissue_lfc(v, map, extra)
+    lf <- panel_lfc(v, map, extra)
     expect_equal(c(20, 4), dim(lf))
 })
 

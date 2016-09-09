@@ -102,6 +102,12 @@ for a user and password which are both set to "rstudio" by default.
 
 # Getting the data
 
+This section describes how to obtain the raw data. Alternatively it also shows
+how to download intermediate data sets that cut down the analysis time
+significantly.
+
+## Obtain raw data (slow)
+
 We will start by getting all the required data. You will need about 40 GB of disk
 space for all the downloads. This step is the longest during this analysis.
 
@@ -144,8 +150,20 @@ names(probemap) <- c("ensgene", "description", "symbol", "ucsc", "entrez", "huex
 saveRDS(probemap, "probemap.rds")
 ```
 
+## Obtain intermediate data (faster)
+
+The following intermediate data files are available online:
+
+1. NCI-60 gene expression data and proliferation rates
+   http://dx.doi.org/10.5281/zenodo.61980
+2. TCGA data as compressed RDS file
+   http://dx.doi.org/10.5281/zenodo.61982
+3. probe map as compressed RDS file
+   *Already in the Github repository*
 
 # Preprocessing exon expression data
+
+**Note: This entire section is optional if you downloaded the `egprob.csv` file.**
 
 ## Normalization and summary
 
@@ -250,7 +268,7 @@ it in csv format, so that it can be used easily in other software.
 ```{r}
 export <- data.table(t(eset_summ))
 export[, "rates" := rates]
-readr::write_csv(export, "regprob.csv")
+write.csv(export, "regprob.csv", row.names=F)
 ```
 
 # Preparing TCGA data
@@ -277,7 +295,7 @@ Again, we will save the output in a serialized file.
 saveRDS(tcga, "tcga.rds")
 ```
 
-If you downloaded the preprocessed data you can skip the previous steps and
+If you downloaded the intermediate data you can skip the previous steps and
 read it directly using:
 
 ```{r}
@@ -574,7 +592,7 @@ for the final model.
 ```{r}
 genes <- do.call(rbind, strsplit(colnames(data_red), "x"))
 colnames(genes) <- c("gene1", "gene2")
-write.csv(data.frame(genes, coef=cf[nonzero]), "best_interactions.csv")
+write.csv(data.frame(genes, coef=cf[nonzero]), "best_interactions.csv", row.names=F)
 ```
 
 ## Prediction of proliferation rates
@@ -668,7 +686,7 @@ Finally we will save those data sets for later usage.
 
 ```{r}
 saveRDS(comb, "combined.rds")
-write.csv(pred, "pred_rates.csv")
+write.csv(pred, "pred_rates.csv", row.names=F)
 ```
 
 # Proliferation rates and their association with clinical data
@@ -816,9 +834,176 @@ print(kw_tests)
 
 # Flux predictions and metabolic liabilities
 
-$$\begin{align}
+In order to predict fluxes based on the particular predicted proliferation rate
+and cancer panel we need a specific metabolic model for the cancer that include
+an objective for proliferation (growth). There are only few reconstructions
+that fulfill that requirement. Here, we use reconstruction from the Metabolic
+Atlas for 9 of the TCGA cancer panels which have been validated before
+(http://dx.doi.org/10.1073/pnas.1319196111). The mapping between panels and
+cancer models is described in `tissues.csv`:
+
+```{r}
+tissues <- fread("tissues.csv")
+print(tissues)
+```
+
+For each cancer panel we will now use the corresponding model and solve the
+linear programming problem posed by parsimonious FBA for every cancer sample
+in the panel with a non-zero proliferation rate. Fluxes are denoted by $v_i$,
+the stochiometric matrix of the model by $\mathbf{S}$, the proliferation objective
+in the model by $v_p$ and the predicted proliferation rate by $r_p$. Models are
+converted to the irreversible formulation beforehand.
+
+$$\begin{aligned}
 &\min_i \sum_i v_i\\
 s.t.\quad& \mathbf{Sv} = 0\\
 & v_p = r_p\\
 & v_i \geq 0
-\end{align}$$
+\end{aligned}$$
+
+For that we use [cobrapy](https://opencobra.github.io/cobrapy/) and warm start
+strategy where a previous solution basis is recycled to yield faster convergence
+of the solver. All of this is implemented in the `fluxes.py` script which will
+use the predicted rates saved earlier.
+
+```{r, eval=FALSE}
+system2("python3", "fluxes.py")
+```
+
+Note that you may have to substitute `python3` with `python` depending on your
+Python installation.
+
+## Flux analysis
+
+The resulting fluxes are now saved in `fluxes.csv`, for convenience this only
+includes fluxes which were non-zero in at least one sample.
+
+First we will create a mapping between patient barcodes and cancer panels.
+
+```{r}
+panels <- pred$panel
+names(panels) <- pred$patient_barcode
+panels <- sort(panels)
+```
+
+Now we can read the fluxes and conver them to a matrix.
+
+```{r}
+fluxes <- fread("fluxes.csv")
+barcodes <- fluxes$V1
+fluxes <- as.matrix(fluxes[, V1 := NULL])
+rownames(fluxes) <- barcodes
+```
+
+For later analysis we would also like to group fluxes by their corresponding
+metabolic pathways. The `fluxes.py` script also extracts that information from
+the model and saves is as "subsystem" in the `flux_info.csv` file.
+
+```{r}
+info <- fread("flux_info.csv")
+head(info)
+```
+
+We can visulaize the resulting fluxes with a heatmap.
+
+```{r, dev="png", fig.width=8, fig.height=6}
+cols <- viridis::viridis(256)
+panels <- panels[!duplicated(names(panels))]
+fluxes <- fluxes[order(panels[rownames(fluxes)], decreasing=TRUE), ]
+in_fluxes <- names(panels) %in% rownames(fluxes)
+annrow <- data.frame(panel=panels[in_fluxes], row.names=names(panels)[in_fluxes])
+anncolors <- scales::hue_pal()(9)
+names(anncolors) <- levels(annrow$panel)
+anncolors <- list(panel=anncolors)
+
+s <- seq(-16, log(max(fluxes)+1e-16,2), length.out = 256)
+pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F,
+    show_colnames=F, annotation_row=annrow, annotation_colors=anncolors,
+    cluster_rows=FALSE, border_color=NA)
+```
+
+## Cancer Panel Specificity
+
+Based on the predicted fluxes we can now calculate a specificity score $s^i_p$ for
+each flux $v_i$ and panel p as the log-fold change of the flux within the panel
+versus all other panels. Here $v_i^p$ denotes the mean value of the flux $v_i$
+within the panel p and $v_i^o$ outside the panel p.
+
+$$s^i_p = \log_2 v_i^p - \log_2 v_i^o$$
+
+A value of zero denotes homogeneous fluxes across all panels, a value larger than
+zero fluxes that are up-regulated in a particular panel and a value smaller zero
+fluxes that are down-regulated in a prticular panel. The calculation is
+implemented in the `prtools` package.
+
+```{r}
+lfcs <- panel_lfc(fluxes, panels, info[, list(subsystem)])
+```
+
+We will order those by their absolute value from largest to smallest.
+
+```{r}
+lfcs <- lfcs[order(-abs(lfc))]
+lfcs
+```
+
+We can now visualize those changes across all metabolic pathways.
+
+```{r, fig.width=10, fig.height=20}
+lfcs[, panel := factor(panel)]
+lab <- function(x) lapply(x, shorten, n=20)
+lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
+    geom_hline(yintercept=0, linetype="dashed") +
+    geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.5) +
+    theme_bw() + theme(axis.text.x=element_text(angle = 45, vjust = 1, hjust=1),
+    legend.position="none") + facet_wrap(~subsystem, labeller=lab, nrow=12, ncol=6) +
+    ylab("specificity score")
+
+print(lfc_plot)
+```
+
+## Enrichment Analysis
+
+Those are a lot of plot and we would like a more quantitative evaluation which
+of the pathways are the most specific or or homogeneous ones. This can be obtained
+from an enrichment analysis. Here we use a method similar to [GSEA](http://software.broadinstitute.org/gsea)
+which calculates normalized enrichment scores (NES) and p-values for each pathway.
+
+Here, a value larger than one denotes association with specific fluxes and a value
+smaller than one association with homogeneous fluxes.
+
+```{r}
+pws <- lfcs$subsystem
+enr <- sapply(unique(pws), NES, w=lfcs$lfc, pws=pws)
+enr <- data.table(subsystem=colnames(enr), nes=enr[1,], p=enr[2,])
+enr <- enr[order(nes)]
+enr[, subsystem := factor(subsystem, levels=subsystem)]
+
+head(enr)
+```
+
+For panel-specific pathways we now obtain the following:
+
+```{r, fig.width=6, fig.height=8}
+enr_plot <- ggplot(enr, aes(x=nes, y=subsystem, col=p)) +
+    geom_vline(xintercept=1, linetype="dashed") +
+    geom_point() + scale_colour_continuous(low="red", high="black") +
+    theme_bw() + scale_y_discrete(labels=shorten) +
+    theme(legend.position=c(0.2,0.9)) + xlab("enrichment score") + ylab("")
+
+print(enr_plot %+% enr[nes > 1])
+```
+
+Here we see that there is a group of three pathways that set themselves apart
+on the top. We can visualize only those again:
+
+```{r, fig.width=7, fig.height=3}
+best <- enr$subsystem[1:3]
+print(lfc_plot %+% lfcs[subsystem %in% best])
+```
+
+Finally we can also visualize homogeneous pathways.
+
+```{r, fig.with=3, fig.height=5}
+print(enr_plot %+% enr[nes <= 1])
+```

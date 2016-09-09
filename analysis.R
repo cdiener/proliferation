@@ -86,7 +86,7 @@ fluxes <- as.matrix(fluxes[, V1 := NULL])
 rownames(fluxes) <- barcodes
 info <- fread("flux_info.csv")
 
-lfcs <- tissue_lfc(fluxes, panels, info[, list(subsystem)])
+lfcs <- panel_lfc(fluxes, panels, info[, list(subsystem)])
 lfcs <- lfcs[order(-abs(lfc))]
 
 pws <- lfcs$subsystem
