@@ -11,5 +11,6 @@ build:
         - script:
             name: r-lint
             code: |
-                Rscript -e "library(lintr); lint_package('prtools', linters = \
-                with_defaults(trailing_blank_lines_linter=NULL))"
+                Rscript -e "devtools::load_all('prtools'); \
+                library(lintr); lint_package('prtools', linters = \
+                with_defaults(trailing_blank_lines_linter = NULL))"
