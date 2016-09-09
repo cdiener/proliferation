@@ -1,6 +1,6 @@
 Package: prtools
 Title: Helper library for inferring proliferations rates on a per-patient basis
-Version: 0.3.0
+Version: 0.3.2
 Authors@R: person("Christian", "Diener", email = "mail@cdiener.com", role = c("aut", "cre"))
 Description: This package includes helper functions for exon expression
     summarization, variable selection, model training and prediction.
@@ -22,7 +22,8 @@ Imports:
     doMC,
     oligo,
     glmnet,
-    pheatmap
+    pheatmap,
+    ggplot2
 Remotes: github::cdiener/tcgar
 RoxygenNote: 5.0.1
 Suggests: testthat, covr
