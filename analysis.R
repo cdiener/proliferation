@@ -73,8 +73,8 @@ stage_plot <- ggplot(x, aes(x = value, y = rates, col = variable)) +
     theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1,
     hjust = 1), legend.position = "none", strip.text = element_blank()) +
     ylab("proliferation rate [1/h]") + xlab("")
-ggsave("images/stage.png", width = 180, height = 60, units = "mm", scale = 1.2,
-    dpi = 300)
+ggsave("images/stage.svg", stage_plot, width = 180, height = 60, units = "mm",
+    scale = 1.5)
 
 # Get statistics
 kw_tests <- x[, kruskal.test(rates, factor(value)), by = variable]
