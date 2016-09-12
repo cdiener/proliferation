@@ -92,7 +92,7 @@ tcga <- readRDS("tcga.rds")
 map <- genemap
 setkey(map, ensgene)
 
-symbs <- cbind(hdt[genes[,1], symbol], hdt[genes[,2], symbol])
+symbs <- cbind(map[genes[, 1], symbol], map[genes[, 2], symbol])
 huex_ex <- tcga$huex$assay[unique(as.vector(symbs)), ]
 huex_ex <- huex_ex + norm[2]
 huex_red <- t(huex_ex[symbs[,1], ] * huex_ex[symbs[,2], ])
