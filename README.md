@@ -2,6 +2,8 @@
 [![codecov](https://codecov.io/gh/cdiener/proliferation/branch/master/graph/badge.svg)](https://codecov.io/gh/cdiener/proliferation)
 ![paper status](https://img.shields.io/badge/paper-in_preparation-yellow.svg)
 [![Docker Pulls](https://img.shields.io/docker/pulls/cdiener/proliferation.svg?maxAge=2592000)](https://hub.docker.com/r/cdiener/proliferation)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.154546.svg)](https://doi.org/10.5281/zenodo.154546)
+
 
 # Pan-cancer analysis of proliferation rates and metabolic liabilities
 
