@@ -16,6 +16,19 @@ It uses a [R markdown](http://rmarkdown.rstudio.com/) file to automatically
 create a detailed protocol of the analysis which is available at
 https://cdiener.github.io/proliferation.
 
+## Intermediate data
+
+In case you would like to reproduce the analysis but do now want to wait
+downloading the raw data we also provide some intermediate data files you
+can (optinonally) use to accelerate the analysis:
+
+1. 1. NCI-60 gene expression data and proliferation rates
+   http://dx.doi.org/10.5281/zenodo.61980
+2. TCGA data as compressed RDS file
+   http://dx.doi.org/10.5281/zenodo.61982
+3. probe map as compressed RDS file
+   *Already in the Github repository*
+
 ## Rerunning the analysis interactively
 
 ### Locally
@@ -39,10 +52,15 @@ Clone the repository and enter the folder:
 git clone https://github.com/cdiener/proliferation && cd proliferation
 ```
 
-For Debian Jessie we recommend installation of Python via [Anaconda](https://www.continuum.io/downloads)
+For Debian Jessie we recommend updating pip on a per-user setting
 in order to get a version of pip that is greater than 8.1.
 
-The python dependencies can be installed with  
+```bash
+sudo apt-get install r-base r-base-dev python3 python3-pip git
+pip3 install -U pip
+```
+
+The python dependencies can be installed with
 
 ```bash
 pip3 install lxml python-libsbml numpy scipy cobra
@@ -60,7 +78,8 @@ You can now run the steps presented in the protocol.
 ### With a cloud provider
 
 Using a cloud provider such as [Google Cloud](https://cloud.google.com/) or
-[Amazon AWS](https://aws.amazon.com/) you can use the docker image.
+[Amazon AWS](https://aws.amazon.com/) you can rerun the analysis easily with
+the provided docker image.
 
 1. Create a new virtual machine with more than 16 GB of RAM using the CoreOS
    stable image.
@@ -77,7 +96,7 @@ Using a cloud provider such as [Google Cloud](https://cloud.google.com/) or
    ```
 
    (You can now disconnect the SSH connection, but leave the VM running.)
-5. Access the machine at http://<your-ip>:8000 where <your-ip> is the IP of
+5. Access the machine at http://your-ip:8000 where "your-ip" is the IP of
    your VM or "localhost" when running docker on your own machine. You will
    be prompted with for login information where the user and password are
    "rstudio".
@@ -85,5 +104,7 @@ Using a cloud provider such as [Google Cloud](https://cloud.google.com/) or
 This will present you with an R studio interface where all additional dependencies
 and intermediate data are available.
 
-For a start select the folder "proliferation" in the file panel on the lower
-right and click on "protocol.rmd".
+For a start click the "..." symbol in the file panel on the lower
+right and enter "/data/proliferation". Now click on "protocol.rmd" to see or
+run the protocol (by clicking "knit HTML") or use any of the *.R
+files in the same directory.

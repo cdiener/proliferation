@@ -7,7 +7,7 @@
 NULL
 
 pkgs <- c("data.table", "oligo", "foreach", "doMC", "survival", "tcgar",
-    "glmnet", "biomaRt", "ggplot2", "pheatmap")
+    "glmnet", "biomaRt", "ggplot2", "pheatmap", "viridis")
 
 silent_lib <- function(...) suppressPackageStartupMessages(library(...))
 

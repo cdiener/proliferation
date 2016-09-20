@@ -4,3 +4,4 @@
 matrix_reduce <- function(m, idx, factors, method) {
     .Call('prtools_matrix_reduce', PACKAGE = 'prtools', m, idx, factors, method)
 }
+
