@@ -1,6 +1,6 @@
 [![wercker status](https://app.wercker.com/status/4c8247e9636b875cb647a4173200b674/s "wercker status")](https://app.wercker.com/project/bykey/4c8247e9636b875cb647a4173200b674)
 [![codecov](https://codecov.io/gh/cdiener/proliferation/branch/master/graph/badge.svg)](https://codecov.io/gh/cdiener/proliferation)
-![paper status](https://img.shields.io/badge/paper-in_preparation-yellow.svg)
+![paper status](https://img.shields.io/badge/paper-submitted-yellow.svg)
 [![Docker Pulls](https://img.shields.io/docker/pulls/cdiener/proliferation.svg?maxAge=2592000)](https://hub.docker.com/r/cdiener/proliferation)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.154546.svg)](https://doi.org/10.5281/zenodo.154546)
 
@@ -24,7 +24,7 @@ In case you would like to reproduce the analysis but do now want to wait
 downloading the raw data we also provide some intermediate data files you
 can (optinonally) use to accelerate the analysis:
 
-1. 1. NCI-60 gene expression data and proliferation rates
+1. NCI-60 gene expression data and proliferation rates
    http://dx.doi.org/10.5281/zenodo.61980
 2. TCGA data as compressed RDS file
    http://dx.doi.org/10.5281/zenodo.61982
