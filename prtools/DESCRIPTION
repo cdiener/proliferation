@@ -1,6 +1,6 @@
 Package: prtools
 Title: Helper library for inferring proliferations rates on a per-patient basis
-Version: 0.3.4
+Version: 0.3.5
 Authors@R: person("Christian", "Diener", email = "mail@cdiener.com", role = c("aut", "cre"))
 Description: This package includes helper functions for exon expression
     summarization, variable selection, model training and prediction.
