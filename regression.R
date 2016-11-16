@@ -114,7 +114,7 @@ huex_ex <- huex_ex + norm[2]
 huex_red <- t(huex_ex[symbs[, 1], ] * huex_ex[symbs[, 2], ])
 colnames(huex_red) <- paste0(symbs[, 1], "x", symbs[, 2])
 rates_huex <- predict(mod, huex_red, s = "lambda.min")[, 1]
-controls <- is.na(names(rates_huex))
+controls <- is.na(tcga$huex$samples$tumor)
 rates_huex <- rates_huex[!controls]
 
 rna_ex <- tcga$rnaseq$counts[unique(as.vector(genes)), ]

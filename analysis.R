@@ -90,6 +90,7 @@ barcodes <- fluxes$V1
 fluxes <- as.matrix(fluxes[, V1 := NULL])
 rownames(fluxes) <- barcodes
 info <- fread("flux_info.csv")
+names(info) <- c("reaction", "subsystem")
 
 lfcs <- panel_lfc(fluxes, panels, info[, list(subsystem)])
 lfcs <- lfcs[order(-abs(lfc))]
@@ -117,6 +118,19 @@ pheatmap::pheatmap(fluxes, breaks = c(-1e-6, 2 ^ s), col = cols,
     cluster_rows = FALSE, border_color = NA, file = "images/fluxes.png",
     width = 5, height = 5, annotation_legend = F)
 
+dt <- as.data.table(fluxes)
+dt[, "panel" := panels[rownames(fluxes)]]
+dt <- melt(dt, id.vars = "panel")
+names(dt) <- c("panel", "reaction", "flux")
+dt <- merge(dt, info, by = "reaction")
+pathways <- c("Glycolysis / Gluconeogenesis", "Oxidative phosphorylation",
+    "Tricarboxylic acid cycle and glyoxylate/dicarboxylate metabolism")
+flux_plot <- ggplot(dt[subsystem %in% pathways],
+    aes(x = panel, y = flux, color = panel)) + xlab("") +
+    geom_jitter(height = 0, alpha = 0.1, size = 0.5) + facet_wrap(~ subsystem) +
+    theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    hjust = 1), legend.position = "none", strip.text = element_blank())
+
 lfcs[, panel := factor(panel)]
 lab <- function(x) lapply(x, shorten, n = 20)
 lfc_plot <- ggplot(lfcs, aes(x = panel, y = lfc, col = panel)) +
@@ -136,8 +150,10 @@ enr_plot <- ggplot(enr, aes(x = nes, y = subsystem, col = p)) +
 spec <- enr[, rev(subsystem)[1:3]]
 spec_plot <- (lfc_plot + theme(strip.text = element_blank())) %+%
     lfcs[subsystem %in% spec]
+ggsave("images/figS1.png", flux_plot, width = 200, height = 80, dpi = 300,
+       units = "mm")
 ggsave("images/lfcs.svg", spec_plot, width = 200, height = 80, units = "mm")
-ggsave("images/lfcs_strata.pdf", lfc_plot, width = 300, height = 600,
+ggsave("images/figS2.pdf", lfc_plot, width = 300, height = 600,
     units = "mm")
 ggsave("images/ssea_over.pdf", enr_plot %+% enr[nes > 1], width = 90,
     height = 120, units = "mm", dpi = 300, scale = 1.3)

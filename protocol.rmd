@@ -353,7 +353,7 @@ all_huex <- data.table(symbol=tcga$huex$features$symbol,
 
 We also do the same for the NCI-60 HuEx data.
 
-```{r}
+```{r, results="hide"}
 nci60 <- fread("regprob.csv", header=T)
 rates <- nci60$rates
 nci60[, rates := NULL]
@@ -489,10 +489,15 @@ rdata <- fread("regprob.csv", header=T)
 But this time we will only select the genes that conserved (difference in
 normalized log expression smaller than one).
 
-```{r}
+```{r, results="hide"}
 rates <- rdata$rates
 rdata[, "rates" := NULL]
 rdata <- as.matrix(rdata)[, good]
+```
+
+Which has dimensions
+
+```{r}
 dim(rdata)
 ```
 
@@ -665,7 +670,7 @@ that do not map to any TCGA samples.
 huex_red <- t(huex_ex[symbs[,1], ] * huex_ex[symbs[,2], ])
 colnames(huex_red) <- paste0(symbs[,1], "x", symbs[,2])
 rates_huex <- predict(mod, huex_red, s="lambda.min")[,1]
-controls <- is.na(names(rates_huex))
+controls <- is.na(tcga$huex$samples$tumor)
 rates_huex <- rates_huex[!controls]
 ```
 
@@ -735,7 +740,7 @@ across the TCGA cancer panels.
 
 We will start by ordering the panels by their mean proliferation rate,
 
-```{r}
+```{r, results="hide"}
 means <- pred[, list(val=median(rates)), by=panel]
 setkey(pred, panel)
 pred <- pred[means[order(val), panel]]
@@ -743,9 +748,9 @@ pred[, panel := factor(panel, levels=unique(panel))]
 ```
 
 followed by plotting them with `ggplot2`.
-```{r, fig.width=10, fig.height=4}
+```{r, fig.width=10, fig.height=4, results="hide"}
 ggplot(pred, aes(x=panel, y=rates, color=tumor, shape=tumor)) +
-    geom_jitter(alpha=0.2, width=0.8, height=0, size=1) + theme_bw() + theme(axis.text.x =
+    geom_jitter(alpha=0.2, height=0, size=1) + theme_bw() + theme(axis.text.x =
     element_text(angle = 45, vjust = 1, hjust=1), legend.position="none") +
     xlab("") + ylab("proliferation rate [1/h]") +
     scale_colour_manual(values=c("royalblue", "red3"))
@@ -839,7 +844,7 @@ The pathological tumor stages are already contained in `comb`, however they may
 have several subtypes. So we will clean them up a bit to only leave the major
 tumor stages such as "T1", "N2", "Stage III", etc.
 
-```{r}
+```{r, results="hide"}
 comb[, T := gsub("[a-e][0-9]*$", "", T)]
 comb[, N := gsub("[^0-4NX]", "", N)]
 comb[, M := gsub("[^0-4MX]", "", M)]
@@ -924,7 +929,7 @@ panels <- sort(panels)
 
 Now we can read the fluxes and conver them to a matrix.
 
-```{r}
+```{r, results="hide"}
 fluxes <- fread("fluxes.csv")
 barcodes <- fluxes$V1
 fluxes <- as.matrix(fluxes[, V1 := NULL])
@@ -937,6 +942,7 @@ the model and saves is as "subsystem" in the `flux_info.csv` file.
 
 ```{r}
 info <- fread("flux_info.csv")
+names(info) <- c("reaction", "subsystem")
 head(info)
 ```
 
@@ -958,6 +964,31 @@ pheatmap(fluxes, breaks=c(-1e-6,2^s), col=cols, show_rownames=F,
     cluster_rows=FALSE, border_color=NA)
 ```
 
+In order to see major metabolic proerties of the studied panels we will also
+visualize the fluxes across the three major pathways of central carbon
+metabolism. We will start by transforming our flux matrix to a data.table that
+can be passed to ggplot.
+
+```{r}
+dt <- as.data.table(fluxes)
+dt$panel <- panels[rownames(fluxes)]
+dt <- melt(dt, id.vars = "panel")
+names(dt) <- c("panel", "reaction", "flux")
+dt <- merge(dt, info, by = "reaction")
+```
+
+This will be followed by filtering the subsystem for Glycolysis,
+Oxidative Phosphorylation, and TCA cycle and plotting the results.
+
+```{r, dev="png", dpi=200, fig.width=7, fig.height=3}
+pathways <- c("Glycolysis / Gluconeogenesis", "Oxidative phosphorylation",
+    "Tricarboxylic acid cycle and glyoxylate/dicarboxylate metabolism")
+ggplot(dt[subsystem %in% pathways], aes(x = panel, y = flux, color = panel)) +
+    geom_jitter(height = 0, alpha = 0.05, size = 0.5) + facet_wrap(~ subsystem) +
+    theme_bw() + theme(axis.text.x = element_text(angle = 45, vjust = 1,
+    hjust = 1), legend.position = "none") + xlab("")
+```
+
 ## Cancer Panel Specificity
 
 Based on the predicted fluxes we can now calculate a specificity score $s^i_p$ for
@@ -969,7 +1000,7 @@ $$s^i_p = \log_2 \mu^i_p - \log_2 \mu^i_p$$
 
 A value of zero denotes homogeneous fluxes across all panels, a value larger than
 zero fluxes that are up-regulated in a particular panel and a value smaller zero
-fluxes that are down-regulated in a prticular panel. The calculation is
+fluxes that are down-regulated in a particular panel. The calculation is
 implemented in the `prtools` package.
 
 ```{r}
@@ -985,12 +1016,12 @@ lfcs
 
 We can now visualize those changes across all metabolic pathways.
 
-```{r, fig.width=10, fig.height=20}
+```{r, fig.width=10, fig.height=20, results="hide"}
 lfcs[, panel := factor(panel)]
 lab <- function(x) lapply(x, shorten, n=20)
 lfc_plot <- ggplot(lfcs, aes(x=panel, y=lfc, col=panel)) +
     geom_hline(yintercept=0, linetype="dashed") +
-    geom_boxplot(outlier.colour=NA) + geom_jitter(width=0.5, alpha=0.5) +
+    geom_boxplot(outlier.colour=NA) + geom_jitter(alpha=0.5) +
     theme_bw() + theme(axis.text.x=element_text(angle = 45, vjust = 1, hjust=1),
     legend.position="none") + facet_wrap(~subsystem, labeller=lab, nrow=12, ncol=6) +
     ylab("specificity score")
@@ -1008,14 +1039,12 @@ which calculates normalized enrichment scores (NES) and p-values for each pathwa
 Here, a value larger than one denotes association with specific fluxes and a value
 smaller than one association with homogeneous fluxes.
 
-```{r}
+```{r, results="hide"}
 pws <- lfcs$subsystem
 enr <- sapply(unique(pws), NES, w=lfcs$lfc, pws=pws)
 enr <- data.table(subsystem=colnames(enr), nes=enr[1,], p=enr[2,])
 enr <- enr[order(nes)]
 enr[, subsystem := factor(subsystem, levels=subsystem)]
-
-head(enr)
 ```
 
 For panel-specific pathways we now obtain the following:
@@ -1042,4 +1071,25 @@ Finally we can also visualize homogeneous pathways.
 
 ```{r, fig.width=6, fig.height=5}
 print(enr_plot %+% enr[nes <= 1])
+```
+
+# Software versions
+
+## R and packages
+
+```{r}
+sessionInfo()
+```
+
+## Python and packages
+
+```{bash}
+python3 -V
+```
+
+Only directly used packages are cobra and pandas
+
+```{bash}
+python3 -c "import cobra; print('cobra', cobra.__version__)"
+python3 -c "import pandas; print('pandas', pandas.__version__)"
 ```
