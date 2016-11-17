@@ -1,7 +1,7 @@
 FROM bioconductor/release_base
 MAINTAINER "Christian Diener <mail[at]cdiener.com>"
 
-RUN apt-get update && apt-get -y -t testing install python3 python3-pip wget && apt-get clean
+RUN apt-get update && apt-get -y -t testing install python3 python3-pip libssl-dev wget && apt-get clean
 RUN pip3 install python-libsbml numpy scipy lxml cobra pandas && rm -rf /tmp/*
 
 RUN mkdir /data && chown rstudio:rstudio /data
