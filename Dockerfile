@@ -12,7 +12,7 @@ USER rstudio
 RUN git clone https://github.com/cdiener/proliferation /data/proliferation
 WORKDIR /data/proliferation
 USER root
-RUN Rscript -e "source('https://bioconductor.org/biocLite.R'); \
+RUN Rscript -e "source('http://bioconductor.org/biocLite.R'); \
     biocLite('BiocInstaller'); setRepositories(ind=1:2); \
     install.packages(c('devtools', 'rmarkdown')); \
     devtools::install_deps('prtools', dependencies=TRUE); \
