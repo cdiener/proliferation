@@ -35,12 +35,12 @@ can (optinonally) use to accelerate the analysis:
 
 The predicted proliferation rates for more than 12000 samples from the TCGA.
 
-1. Raw predictions for 12339 samples together with their respective barcode and cancer panel 
-   https://github.com/cdiener/proliferation/results/pred_rates.csv
+1. Raw predictions for 12339 samples together with their respective barcode and cancer panel.
+   [results/pred_rates.csv](results/pred_rates.csv)
 2. Raw predictions for 12111 samples that had clinical annotations merged with several clinical
    indicators such as survival data, histology types, TNM stage, follow ups and no. of new tumor
    events.
-   https://github.com/cdiener/proliferation/results/combined.csv
+   [results/combined.csv](results/combined.csv)
 
 ## Rerunning the analysis interactively
 
