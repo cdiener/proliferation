@@ -1,6 +1,6 @@
 [![wercker status](https://app.wercker.com/status/4c8247e9636b875cb647a4173200b674/s "wercker status")](https://app.wercker.com/project/bykey/4c8247e9636b875cb647a4173200b674)
 [![codecov](https://codecov.io/gh/cdiener/proliferation/branch/master/graph/badge.svg)](https://codecov.io/gh/cdiener/proliferation)
-![paper status](https://img.shields.io/badge/paper-submitted-yellow.svg)
+[![paper status](https://img.shields.io/badge/paper-published-green.svg)](https://doi.org/10.3389/fphys.2016.00644)
 [![Docker Pulls](https://img.shields.io/docker/pulls/cdiener/proliferation.svg?maxAge=2592000)](https://hub.docker.com/r/cdiener/proliferation)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.154546.svg)](https://doi.org/10.5281/zenodo.154546)
 
